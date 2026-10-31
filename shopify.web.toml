@@ -1,0 +1,7 @@
+name = "3D OUTFIT"
+roles = ["frontend", "backend"]
+webhooks_path = "/webhooks/app/uninstalled"
+
+[commands]
+predev = "npx prisma generate"
+dev = "npx prisma migrate deploy && npm exec react-router dev"

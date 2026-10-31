@@ -1,0 +1,11 @@
+api_version = "2026-07"
+
+[[extensions]]
+name = "t:name"
+handle = "product-3d-bulk-action"
+type = "ui_extension"
+uid = "55298d39-19e2-4a0d-850c-8604aadf41f0"
+
+[[extensions.targeting]]
+module = "./src/ActionExtension.jsx"
+target = "admin.product-index.selection-action.render"

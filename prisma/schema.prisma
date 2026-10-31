@@ -1,0 +1,168 @@
+// Prisma schema for 3D OUTFIT
+// Shop / GenerationJob / ProductSnapshot / Asset3D / EngineRun
+// Session is required by Shopify session storage.
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = "file:dev.sqlite"
+}
+
+model Session {
+  id                  String    @id
+  shop                String
+  state               String
+  isOnline            Boolean   @default(false)
+  scope               String?
+  expires             DateTime?
+  accessToken         String
+  userId              BigInt?
+  firstName           String?
+  lastName            String?
+  email               String?
+  accountOwner        Boolean   @default(false)
+  locale              String?
+  collaborator        Boolean?  @default(false)
+  emailVerified       Boolean?  @default(false)
+  refreshToken        String?
+  refreshTokenExpires DateTime?
+}
+
+/// Installed Shopify shop (merchant store).
+model Shop {
+  id           String   @id @default(cuid())
+  shopDomain   String   @unique
+  name         String?
+  accessScopes String?
+  installedAt  DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+  jobs         GenerationJob[]
+}
+
+/// Status flow: collecting → review → generating → sizing → ready / failed
+enum JobStatus {
+  collecting
+  review
+  generating
+  sizing
+  ready
+  failed
+  cancelled
+}
+
+/// One bulk 3D creation unit (may include multiple products).
+model GenerationJob {
+  id          String      @id @default(cuid())
+  shopId      String
+  shop        Shop        @relation(fields: [shopId], references: [id], onDelete: Cascade)
+  status      JobStatus   @default(collecting)
+  /// Optional merchant-facing label
+  title       String?
+  /// Raw selected product GIDs / IDs from Admin Action / Bulk link
+  selectedProductIds String
+  errorMessage String?
+  createdAt   DateTime    @default(now())
+  updatedAt   DateTime    @updatedAt
+  confirmedAt DateTime?
+  startedAt   DateTime?
+  completedAt DateTime?
+
+  products  ProductSnapshot[]
+  engineRuns EngineRun[]
+}
+
+/// Collected product state at generation time (images, description, metafields, parse + manual edits).
+model ProductSnapshot {
+  id              String   @id @default(cuid())
+  jobId           String
+  job             GenerationJob @relation(fields: [jobId], references: [id], onDelete: Cascade)
+  shopifyProductId String
+  handle          String?
+  title           String?
+  /// Full product description HTML/text used for size-chart parsing
+  descriptionHtml String?
+  /// JSON array of image objects { id, url, alt, position }
+  imagesJson      String   @default("[]")
+  /// JSON metafields dump
+  metafieldsJson  String   @default("[]")
+  /// Parsed size chart (structured); empty / TODO until parser improves
+  sizeChartJson   String   @default("{}")
+  /// Merchant manual overrides (merged over parsed data on confirm)
+  manualEditsJson String   @default("{}")
+  /// Flags for missing images / size chart / metafields etc.
+  missingFlagsJson String  @default("[]")
+  reviewNotes     String?
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  assets Asset3D[]
+
+  @@index([jobId])
+  @@index([shopifyProductId])
+}
+
+enum AssetKind {
+  base
+  sized_variant
+  preview
+  intermediate
+}
+
+/// Generated 3D model assets (base worn-size first; later S/M/L variants).
+model Asset3D {
+  id                 String        @id @default(cuid())
+  productSnapshotId  String
+  productSnapshot    ProductSnapshot @relation(fields: [productSnapshotId], references: [id], onDelete: Cascade)
+  kind               AssetKind     @default(base)
+  /// e.g. "worn", "S", "M", "L" — base generation uses worn size only
+  sizeLabel          String?
+  storageUrl         String?
+  mimeType           String?
+  /// Optional JSON metadata (poly count, bbox, etc.)
+  metaJson           String        @default("{}")
+  engineRunId        String?
+  engineRun          EngineRun?    @relation(fields: [engineRunId], references: [id], onDelete: SetNull)
+  createdAt          DateTime      @default(now())
+  updatedAt          DateTime      @updatedAt
+
+  @@index([productSnapshotId])
+}
+
+enum EngineRunStatus {
+  queued
+  submitted
+  running
+  succeeded
+  failed
+  cancelled
+}
+
+/// RunPod / ComfyUI / TRELLIS.2 execution log.
+model EngineRun {
+  id              String          @id @default(cuid())
+  jobId           String
+  job             GenerationJob   @relation(fields: [jobId], references: [id], onDelete: Cascade)
+  status          EngineRunStatus @default(queued)
+  provider        String          @default("runpod")
+  endpointId      String?
+  /// Provider job / run id returned by RunPod
+  externalRunId   String?
+  /// Request payload shape (workflow stub); never store secrets
+  requestJson     String          @default("{}")
+  responseJson    String          @default("{}")
+  errorMessage    String?
+  /// Constraint reminder: photo-only generation (no size chart)
+  photoOnly       Boolean         @default(true)
+  createdAt       DateTime        @default(now())
+  updatedAt       DateTime        @updatedAt
+  startedAt       DateTime?
+  finishedAt      DateTime?
+
+  assets Asset3D[]
+
+  @@index([jobId])
+  @@index([externalRunId])
+}

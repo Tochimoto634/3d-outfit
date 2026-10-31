@@ -1,0 +1,16 @@
+[[extensions]]
+name = "t:name"
+description = "t:description"
+handle = "product-3d-create-link"
+type = "admin_link"
+uid = "3cda3e73-0974-4fd1-b107-d409fbb3a8a3"
+
+# Bulk selection on Products index → opens embedded Generation Job flow
+[[extensions.targeting]]
+target = "admin.product-index.selection.action.link"
+url = "/app/jobs/new"
+
+# Also available from product details More actions
+[[extensions.targeting]]
+target = "admin.product-details.action.link"
+url = "/app/jobs/new"

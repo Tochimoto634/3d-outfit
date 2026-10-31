@@ -1,0 +1,29 @@
+on: [push, pull_request]
+
+name: CI
+
+jobs:
+  CI:
+    name: Node ${{ matrix.node }}
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        node: [22]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node }}
+          cache: npm
+
+      - name: Install dependencies
+        run: npm install
+
+      - name: Validate Prisma
+        run: npx prisma generate && npx prisma validate
+
+      - name: Typecheck
+        run: npm run typecheck
+
+      - name: Build application
+        run: npm run build
