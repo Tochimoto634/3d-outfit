@@ -6,6 +6,8 @@
 
 import {
   MISSING_FLAG_LABELS,
+  detectModelPhotoPresence,
+  imageSuggestsModelPhoto,
   type CollectedImage,
   type CollectedMetafield,
   type MissingFlag,
@@ -184,7 +186,7 @@ export function collectProductImages(node: AdminProductNode | null | undefined):
     const key = url.trim();
     if (byUrl.has(key)) return;
     position += 1;
-    byUrl.set(key, {
+    const provisional: CollectedImage = {
       id: id || key,
       url: key,
       altText: altText ?? null,
@@ -192,7 +194,13 @@ export function collectProductImages(node: AdminProductNode | null | undefined):
       source,
       width: width ?? null,
       height: height ?? null,
-    });
+    };
+    // Tag positive heuristic hits so review / missing-flag logic can reuse them
+    // without CV. Merchants can still override in the review UI.
+    if (imageSuggestsModelPhoto(provisional).match) {
+      provisional.mediaRole = "model";
+    }
+    byUrl.set(key, provisional);
   };
 
   const featured = node?.featuredMedia?.image;
@@ -375,6 +383,8 @@ export type EffectiveProductReview = {
 
 /**
  * Compute missing flags for a product snapshot (photos required for 3D).
+ * model_meta is soft / optional and only relevant when on-model photos exist
+ * (or the merchant overrides「着用モデル写真あり」).
  */
 export function computeMissingFlags(opts: {
   productFound: boolean;
@@ -382,6 +392,7 @@ export function computeMissingFlags(opts: {
   descriptionHtml?: string | null;
   sizeChart: SizeChartParseResult;
   modelMeta: ModelBodyMeta;
+  hasModelPhoto?: boolean;
 }): MissingFlag[] {
   const missing: MissingFlag[] = [];
   if (!opts.productFound) {
@@ -393,7 +404,12 @@ export function computeMissingFlags(opts: {
   if (opts.sizeChart.incomplete || opts.sizeChart.rows.length === 0) {
     missing.push("size_chart");
   }
-  if (!hasUsableModelMeta(opts.modelMeta)) missing.push("model_meta");
+  const hasModelPhoto =
+    opts.hasModelPhoto ??
+    detectModelPhotoPresence(opts.images, null).hasModelPhoto;
+  if (hasModelPhoto && !hasUsableModelMeta(opts.modelMeta)) {
+    missing.push("model_meta");
+  }
   return missing;
 }
 
@@ -406,12 +422,14 @@ export function buildCollectedSnapshot(opts: {
   const metafields = collectMetafields(node);
   const modelMeta = extractModelBodyMeta(metafields);
   const sizeChart = parseSizeChart(node?.descriptionHtml);
+  const modelPhoto = detectModelPhotoPresence(images, null);
   const missing = computeMissingFlags({
     productFound: Boolean(node?.id),
     images,
     descriptionHtml: node?.descriptionHtml,
     sizeChart,
     modelMeta,
+    hasModelPhoto: modelPhoto.hasModelPhoto,
   });
 
   return {
@@ -423,6 +441,7 @@ export function buildCollectedSnapshot(opts: {
     metafields,
     sizeChart,
     modelMeta,
+    modelPhoto,
     missing,
   };
 }
@@ -432,6 +451,8 @@ export type ManualEditsPayload = {
   sizeChartOverride?: string | null;
   sizeChartJson?: SizeChartParseResult | null;
   modelMetaOverride?: Partial<ModelBodyMeta> | null;
+  /** Merchant「着用モデル写真あり」override; null = heuristic only. */
+  hasModelPhotoOverride?: boolean | null;
   updatedAt?: string;
 };
 
@@ -470,12 +491,18 @@ export function applyManualEdits(opts: {
     sourceKeys: opts.modelMeta.sourceKeys,
   };
 
+  const modelPhoto = detectModelPhotoPresence(
+    opts.images,
+    opts.manualEdits.hasModelPhotoOverride,
+  );
+
   const missing = computeMissingFlags({
     productFound: opts.productFound,
     images: opts.images,
     descriptionHtml: opts.descriptionHtml,
     sizeChart,
     modelMeta,
+    hasModelPhoto: modelPhoto.hasModelPhoto,
   });
 
   return {

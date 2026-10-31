@@ -523,6 +523,16 @@ export async function updateProductManualEdits(
   const merged: ManualEditsPayload = {
     ...prev,
     ...manualEdits,
+    // Preserve prior model meta when the body section was hidden on save.
+    modelMetaOverride:
+      manualEdits.modelMetaOverride === null ||
+      manualEdits.modelMetaOverride === undefined
+        ? prev.modelMetaOverride ?? null
+        : manualEdits.modelMetaOverride,
+    hasModelPhotoOverride:
+      typeof manualEdits.hasModelPhotoOverride === "boolean"
+        ? manualEdits.hasModelPhotoOverride
+        : (prev.hasModelPhotoOverride ?? null),
     updatedAt: new Date().toISOString(),
   };
 
@@ -652,7 +662,9 @@ export function getJobStartBlockers(
       softWarnings.push(`${label}: サイズ表未解析（後工程用・作成は可能）`);
     }
     if (flags.includes("model_meta")) {
-      softWarnings.push(`${label}: モデル体型メタなし（任意）`);
+      softWarnings.push(
+        `${label}: モデル体型メタなし（着用モデル写真あり・任意／作成は可能）`,
+      );
     }
   }
   return {

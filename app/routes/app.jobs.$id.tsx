@@ -1,4 +1,4 @@
-import type { CSSProperties } from "react";
+import { useState, type CSSProperties } from "react";
 import type {
   ActionFunctionArgs,
   HeadersFunction,
@@ -9,8 +9,10 @@ import { boundary } from "@shopify/shopify-app-react-router/server";
 import { authenticate } from "../shopify.server";
 import {
   collectMeasurementKeys,
+  detectModelPhotoPresence,
   editableSizeChartRows,
   effectiveModelMeta,
+  hasModelPhotoOverrideFromForm,
   measurementLabelJa,
   missingFlagLabel,
   modelMetaOverrideFromForm,
@@ -68,11 +70,13 @@ export const action = async ({ request, params }: ActionFunctionArgs) => {
       ? advancedJson || null
       : fromTable || advancedJson || null;
     const modelMetaOverride = modelMetaOverrideFromForm(form);
+    const hasModelPhotoOverride = hasModelPhotoOverrideFromForm(form);
 
     await updateProductManualEdits(snapshotId, {
       reviewNotes: notes,
       sizeChartOverride,
       modelMetaOverride,
+      hasModelPhotoOverride,
       updatedAt: new Date().toISOString(),
     });
     return { ok: true, intent: "save_edits" as const };
@@ -156,6 +160,179 @@ function formatSourceLabel(source?: string | null): string {
   }
 }
 
+function formatModelPhotoSource(
+  source: ReturnType<typeof detectModelPhotoPresence>["source"],
+): string {
+  switch (source) {
+    case "override_on":
+      return "運営者チェック（あり）";
+    case "override_off":
+      return "運営者チェック（なし）";
+    case "heuristic":
+      return "画像alt／ファイル名ヒューリスティック";
+    default:
+      return "未検出（体型入力は非表示）";
+  }
+}
+
+/** Per-product gate: model body fields only when on-model photos are present or overridden. */
+function ProductModelBodyFields(props: {
+  productKey: string;
+  model: ReturnType<typeof effectiveModelMeta>;
+  detection: ReturnType<typeof detectModelPhotoPresence>;
+  initialChecked: boolean;
+}) {
+  const { model, detection, initialChecked } = props;
+  const [checked, setChecked] = useState(initialChecked);
+  const showFields = checked;
+
+  return (
+    <>
+      <s-heading>着用モデル写真</s-heading>
+      <s-paragraph>
+        商品写真に人が服を着ている画像があるときだけ、身長・体重などの体型欄を表示します（誤入力防止）。
+        現状は alt／ファイル名／メディアロールの簡易判定です。画像認識（CV）は後日対応予定です。
+      </s-paragraph>
+      <s-box
+        padding="base"
+        borderWidth="base"
+        borderRadius="base"
+        background="subdued"
+      >
+        <input type="hidden" name="hasModelPhotoOverridePosted" value="1" />
+        <label
+          style={{
+            display: "inline-flex",
+            alignItems: "flex-start",
+            gap: "0.5rem",
+            fontSize: "13px",
+            marginBottom: showFields ? "0.75rem" : 0,
+          }}
+        >
+          <input
+            type="checkbox"
+            name="hasModelPhotoOverride"
+            value="1"
+            checked={checked}
+            onChange={(e) => setChecked(e.target.checked)}
+            style={{ marginTop: 2 }}
+          />
+          <span>
+            着用モデル写真あり
+            <span
+              style={{
+                display: "block",
+                color: "#6d7175",
+                fontSize: "12px",
+                marginTop: 2,
+              }}
+            >
+              判定: {formatModelPhotoSource(detection.source)}
+              {detection.matchedHints.length
+                ? ` ／ 一致: ${detection.matchedHints.slice(0, 3).join(", ")}`
+                : ""}
+            </span>
+          </span>
+        </label>
+
+        {showFields ? (
+          <>
+            <input type="hidden" name="modelFieldsEnabled" value="1" />
+            <s-heading>モデル身長・体型</s-heading>
+            <s-paragraph>
+              メタフィールドから抽出した値です。不足があれば直接入力できます（作成開始の必須ではありません）。
+            </s-paragraph>
+            <div
+              style={{
+                display: "grid",
+                gridTemplateColumns: "repeat(auto-fit, minmax(140px, 1fr))",
+                gap: "0.75rem",
+              }}
+            >
+              <label style={{ fontSize: "13px" }}>
+                身長 (cm)
+                <input
+                  name="model_heightCm"
+                  defaultValue={
+                    model.heightCm == null ? "" : String(model.heightCm)
+                  }
+                  inputMode="decimal"
+                  placeholder="例: 165"
+                  style={{ ...cellInputStyle, marginTop: 4 }}
+                />
+              </label>
+              <label style={{ fontSize: "13px" }}>
+                体重 (kg)
+                <input
+                  name="model_weightKg"
+                  defaultValue={
+                    model.weightKg == null ? "" : String(model.weightKg)
+                  }
+                  inputMode="decimal"
+                  placeholder="例: 48"
+                  style={{ ...cellInputStyle, marginTop: 4 }}
+                />
+              </label>
+              <label style={{ fontSize: "13px" }}>
+                バスト (cm)
+                <input
+                  name="model_bustCm"
+                  defaultValue={
+                    model.bustCm == null ? "" : String(model.bustCm)
+                  }
+                  inputMode="decimal"
+                  style={{ ...cellInputStyle, marginTop: 4 }}
+                />
+              </label>
+              <label style={{ fontSize: "13px" }}>
+                ウエスト (cm)
+                <input
+                  name="model_waistCm"
+                  defaultValue={
+                    model.waistCm == null ? "" : String(model.waistCm)
+                  }
+                  inputMode="decimal"
+                  style={{ ...cellInputStyle, marginTop: 4 }}
+                />
+              </label>
+              <label style={{ fontSize: "13px" }}>
+                ヒップ (cm)
+                <input
+                  name="model_hipCm"
+                  defaultValue={model.hipCm == null ? "" : String(model.hipCm)}
+                  inputMode="decimal"
+                  style={{ ...cellInputStyle, marginTop: 4 }}
+                />
+              </label>
+              <label style={{ fontSize: "13px" }}>
+                着用サイズ
+                <input
+                  name="model_sizeWorn"
+                  defaultValue={model.sizeWorn || ""}
+                  placeholder="例: M"
+                  style={{ ...cellInputStyle, marginTop: 4 }}
+                />
+              </label>
+            </div>
+            {model.sourceKeys?.length ? (
+              <s-paragraph>
+                参照キー: {model.sourceKeys.join(", ")}
+              </s-paragraph>
+            ) : null}
+            {model.notes?.length ? (
+              <s-paragraph>抽出メモ: {model.notes.join(" / ")}</s-paragraph>
+            ) : null}
+          </>
+        ) : (
+          <s-paragraph>
+            着用モデル写真が見つからないため、身長・体重などの入力欄は非表示です。写真にモデルが写っている場合は上のチェックをオンにしてください。
+          </s-paragraph>
+        )}
+      </s-box>
+    </>
+  );
+}
+
 export default function GenerationJobPage() {
   const { job, blockers, runpodMock, runpod } = useLoaderData<typeof loader>();
   const actionData = useActionData<typeof action>();
@@ -218,8 +395,9 @@ export default function GenerationJobPage() {
 
         <s-section heading="選択商品の収集結果">
           <s-paragraph>
-            画像・サイズ表・モデル体型を表／入力欄で確認し、不足があれば補完してから作成を開始してください。
-            3D 生成は写真のみを使用します（サイズ表は生成には使いません・後のサイズ展開用）。
+            画像・サイズ表を表／入力欄で確認し、不足があれば補完してから作成を開始してください。
+            モデル身長・体型は「着用モデル写真あり」の商品だけ表示します。3D
+            生成は写真のみを使用します（サイズ表は生成には使いません・後のサイズ展開用）。
           </s-paragraph>
         </s-section>
 
@@ -239,6 +417,10 @@ export default function GenerationJobPage() {
           const missing = safeJsonArray<string>(product.missingFlagsJson);
           const manual = readManualEditsBlob(product.manualEditsJson);
           const model = effectiveModelMeta(modelMeta, manual.modelMetaOverride);
+          const modelPhoto = detectModelPhotoPresence(
+            images,
+            manual.hasModelPhotoOverride,
+          );
           const criticalMissing = missing.includes("images");
           const measurementKeys = collectMeasurementKeys(sizeChart.rows);
           const editorRows = editableSizeChartRows(sizeChart);
@@ -492,102 +674,13 @@ export default function GenerationJobPage() {
                       </s-stack>
                     </details>
 
-                    <s-heading>モデル身長・体型</s-heading>
-                    <s-paragraph>
-                      メタフィールドから抽出した値です。不足があれば直接入力できます。
-                    </s-paragraph>
-                    <s-box
-                      padding="base"
-                      borderWidth="base"
-                      borderRadius="base"
-                      background="subdued"
-                    >
-                      <div
-                        style={{
-                          display: "grid",
-                          gridTemplateColumns:
-                            "repeat(auto-fit, minmax(140px, 1fr))",
-                          gap: "0.75rem",
-                        }}
-                      >
-                        <label style={{ fontSize: "13px" }}>
-                          身長 (cm)
-                          <input
-                            name="model_heightCm"
-                            defaultValue={
-                              model.heightCm == null ? "" : String(model.heightCm)
-                            }
-                            inputMode="decimal"
-                            placeholder="例: 165"
-                            style={{ ...cellInputStyle, marginTop: 4 }}
-                          />
-                        </label>
-                        <label style={{ fontSize: "13px" }}>
-                          体重 (kg)
-                          <input
-                            name="model_weightKg"
-                            defaultValue={
-                              model.weightKg == null ? "" : String(model.weightKg)
-                            }
-                            inputMode="decimal"
-                            placeholder="例: 48"
-                            style={{ ...cellInputStyle, marginTop: 4 }}
-                          />
-                        </label>
-                        <label style={{ fontSize: "13px" }}>
-                          バスト (cm)
-                          <input
-                            name="model_bustCm"
-                            defaultValue={
-                              model.bustCm == null ? "" : String(model.bustCm)
-                            }
-                            inputMode="decimal"
-                            style={{ ...cellInputStyle, marginTop: 4 }}
-                          />
-                        </label>
-                        <label style={{ fontSize: "13px" }}>
-                          ウエスト (cm)
-                          <input
-                            name="model_waistCm"
-                            defaultValue={
-                              model.waistCm == null ? "" : String(model.waistCm)
-                            }
-                            inputMode="decimal"
-                            style={{ ...cellInputStyle, marginTop: 4 }}
-                          />
-                        </label>
-                        <label style={{ fontSize: "13px" }}>
-                          ヒップ (cm)
-                          <input
-                            name="model_hipCm"
-                            defaultValue={
-                              model.hipCm == null ? "" : String(model.hipCm)
-                            }
-                            inputMode="decimal"
-                            style={{ ...cellInputStyle, marginTop: 4 }}
-                          />
-                        </label>
-                        <label style={{ fontSize: "13px" }}>
-                          着用サイズ
-                          <input
-                            name="model_sizeWorn"
-                            defaultValue={model.sizeWorn || ""}
-                            placeholder="例: M"
-                            style={{ ...cellInputStyle, marginTop: 4 }}
-                          />
-                        </label>
-                      </div>
-                      {model.sourceKeys?.length ? (
-                        <s-paragraph>
-                          参照キー: {model.sourceKeys.join(", ")}
-                        </s-paragraph>
-                      ) : null}
-                      {model.notes?.length ? (
-                        <s-paragraph>
-                          抽出メモ: {model.notes.join(" / ")}
-                        </s-paragraph>
-                      ) : null}
-                    </s-box>
+                    <ProductModelBodyFields
+                      key={`model-body-${product.id}`}
+                      productKey={product.id}
+                      model={model}
+                      detection={modelPhoto}
+                      initialChecked={modelPhoto.hasModelPhoto}
+                    />
 
                     <s-heading>
                       メタフィールド（{metafields.length} 件
