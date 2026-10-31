@@ -7,6 +7,16 @@ import { Form, useActionData, useLoaderData, useNavigation } from "react-router"
 import { boundary } from "@shopify/shopify-app-react-router/server";
 import { authenticate } from "../shopify.server";
 import {
+  missingFlagLabel,
+  readMetafieldsBlob,
+  readSizeChartBlob,
+  REVIEW_GALLERY_PREVIEW_LIMIT,
+  safeJsonArray,
+  safeJsonParse,
+  type CollectedImage,
+  type SizeChartView,
+} from "../lib/product-review";
+import {
   confirmAndStartGeneration,
   GenerationBlockedError,
   getGenerationJob,
@@ -14,14 +24,6 @@ import {
   pollAndSyncEngineRuns,
   updateProductManualEdits,
 } from "../services/jobs.server";
-import {
-  MISSING_FLAG_LABELS,
-  type CollectedImage,
-  type CollectedMetafield,
-  type MissingFlag,
-  type ModelBodyMeta,
-} from "../services/product-collect.server";
-import type { SizeChartParseResult } from "../services/size-chart.server";
 import {
   getRunPodPublicConfig,
   isRunPodMockMode,
@@ -98,41 +100,8 @@ export const action = async ({ request, params }: ActionFunctionArgs) => {
   return { ok: false, intent: "unknown" as const };
 };
 
-function safeJson<T>(raw: string, fallback: T): T {
-  try {
-    return JSON.parse(raw) as T;
-  } catch {
-    return fallback;
-  }
-}
-
-function readMetafields(raw: string): {
-  fields: CollectedMetafield[];
-  modelMeta: ModelBodyMeta | null;
-} {
-  const parsed = safeJson<unknown>(raw, []);
-  if (Array.isArray(parsed)) {
-    return { fields: parsed as CollectedMetafield[], modelMeta: null };
-  }
-  if (parsed && typeof parsed === "object") {
-    const obj = parsed as {
-      fields?: CollectedMetafield[];
-      modelMeta?: ModelBodyMeta;
-    };
-    return {
-      fields: Array.isArray(obj.fields) ? obj.fields : [],
-      modelMeta: obj.modelMeta || null,
-    };
-  }
-  return { fields: [], modelMeta: null };
-}
-
-function flagLabel(flag: string): string {
-  return MISSING_FLAG_LABELS[flag as MissingFlag] || flag;
-}
-
 function defaultSizeChartEditorValue(
-  sizeChart: SizeChartParseResult,
+  sizeChart: SizeChartView,
   override: string | null | undefined,
 ): string {
   if (override?.trim()) return override;
@@ -215,27 +184,34 @@ export default function GenerationJobPage() {
         </s-section>
 
         {job.products.map((product) => {
-          const images = safeJson<CollectedImage[]>(product.imagesJson, []);
-          const { fields: metafields, modelMeta } = readMetafields(
+          const images = safeJsonArray<CollectedImage>(product.imagesJson).filter(
+            (img) => img && typeof img.url === "string" && img.url.trim(),
+          );
+          const previewImages = images.slice(0, REVIEW_GALLERY_PREVIEW_LIMIT);
+          const hiddenImageCount = Math.max(
+            0,
+            images.length - previewImages.length,
+          );
+          const { fields: metafields, modelMeta } = readMetafieldsBlob(
             product.metafieldsJson,
           );
-          const sizeChart = safeJson<SizeChartParseResult>(product.sizeChartJson, {
-            rows: [],
-            unit: null,
-            incomplete: true,
-            notes: [],
-            rawMatches: [],
-            source: "none",
-          });
-          const missing = safeJson<string[]>(product.missingFlagsJson, []);
-          const manual = safeJson<{
+          const sizeChart = readSizeChartBlob(product.sizeChartJson);
+          const missing = safeJsonArray<string>(product.missingFlagsJson);
+          const manual = safeJsonParse<{
             reviewNotes?: string;
             sizeChartOverride?: string;
           }>(product.manualEditsJson, {});
           const criticalMissing = missing.includes("images");
           const modelFields = metafields.filter((mf) =>
             /model|モデル|身長|height|body|体型|worn|着用/i.test(
-              `${mf.namespace}.${mf.key} ${mf.description || ""}`,
+              `${mf.namespace || ""}.${mf.key || ""} ${mf.description || ""}`,
+            ),
+          );
+          const measurementKeys = Array.from(
+            new Set(
+              sizeChart.rows.flatMap((r) =>
+                Object.keys(r?.measurements || {}),
+              ),
             ),
           );
 
@@ -252,11 +228,11 @@ export default function GenerationJobPage() {
 
                 {missing.length > 0 ? (
                   <s-banner tone={criticalMissing ? "critical" : "warning"}>
-                    <s-stack direction="block" gap="small">
+                    <s-stack direction="block" gap="base">
                       <s-text type="strong">不足フラグ</s-text>
                       <ul style={{ margin: 0, paddingLeft: "1.25rem" }}>
                         {missing.map((flag) => (
-                          <li key={flag}>{flagLabel(flag)}</li>
+                          <li key={flag}>{missingFlagLabel(flag)}</li>
                         ))}
                       </ul>
                     </s-stack>
@@ -274,37 +250,47 @@ export default function GenerationJobPage() {
                     商品写真がありません。Shopify 商品に画像を追加してから、もう一度「3D作成」でジョブを作り直してください。
                   </s-banner>
                 ) : (
-                  <s-stack direction="inline" gap="base">
-                    {images.map((img, idx) => (
-                      <s-box
-                        key={img.id || idx}
-                        padding="small"
-                        borderWidth="base"
-                        borderRadius="base"
-                        background="subdued"
-                      >
-                        <a
-                          href={img.url}
-                          target="_blank"
-                          rel="noreferrer"
-                          title={img.altText || `image ${idx + 1}`}
+                  <s-stack direction="block" gap="base">
+                    <s-stack direction="inline" gap="base">
+                      {previewImages.map((img, idx) => (
+                        <s-box
+                          key={img.id || idx}
+                          padding="small"
+                          borderWidth="base"
+                          borderRadius="base"
+                          background="subdued"
                         >
-                          {/* eslint-disable-next-line jsx-a11y/alt-text */}
-                          <img
-                            src={img.url}
-                            alt={img.altText || product.title || "product"}
-                            width={120}
-                            height={120}
-                            style={{ objectFit: "cover", display: "block" }}
-                            loading="lazy"
-                          />
-                        </a>
-                        <s-paragraph>
-                          #{img.position || idx + 1}
-                          {img.source ? ` · ${img.source}` : ""}
-                        </s-paragraph>
-                      </s-box>
-                    ))}
+                          <a
+                            href={img.url}
+                            target="_blank"
+                            rel="noreferrer"
+                            title={img.altText || `image ${idx + 1}`}
+                          >
+                            {/* eslint-disable-next-line jsx-a11y/alt-text */}
+                            <img
+                              src={img.url}
+                              alt={img.altText || product.title || "product"}
+                              width={120}
+                              height={120}
+                              style={{ objectFit: "cover", display: "block" }}
+                              loading="lazy"
+                              decoding="async"
+                            />
+                          </a>
+                          <s-paragraph>
+                            #{img.position || idx + 1}
+                            {img.source ? ` · ${img.source}` : ""}
+                          </s-paragraph>
+                        </s-box>
+                      ))}
+                    </s-stack>
+                    {hiddenImageCount > 0 ? (
+                      <s-banner tone="info">
+                        表示を {REVIEW_GALLERY_PREVIEW_LIMIT}{" "}
+                        枚に制限しています（残り {hiddenImageCount}{" "}
+                        枚は原寸リンク用に保持。生成には全写真を使います）。
+                      </s-banner>
+                    ) : null}
                   </s-stack>
                 )}
 
@@ -332,13 +318,7 @@ export default function GenerationJobPage() {
                           <th style={{ textAlign: "left", padding: "4px 8px" }}>
                             サイズ
                           </th>
-                          {Array.from(
-                            new Set(
-                              sizeChart.rows.flatMap((r) =>
-                                Object.keys(r.measurements || {}),
-                              ),
-                            ),
-                          ).map((key) => (
+                          {measurementKeys.map((key) => (
                             <th
                               key={key}
                               style={{ textAlign: "left", padding: "4px 8px" }}
@@ -349,25 +329,18 @@ export default function GenerationJobPage() {
                         </tr>
                       </thead>
                       <tbody>
-                        {sizeChart.rows.map((row) => {
-                          const keys = Array.from(
-                            new Set(
-                              sizeChart.rows.flatMap((r) =>
-                                Object.keys(r.measurements || {}),
-                              ),
-                            ),
-                          );
-                          return (
-                            <tr key={row.size}>
-                              <td style={{ padding: "4px 8px" }}>{row.size}</td>
-                              {keys.map((key) => (
-                                <td key={key} style={{ padding: "4px 8px" }}>
-                                  {row.measurements?.[key] ?? "—"}
-                                </td>
-                              ))}
-                            </tr>
-                          );
-                        })}
+                        {sizeChart.rows.map((row, rowIdx) => (
+                          <tr key={`${row.size || "row"}-${rowIdx}`}>
+                            <td style={{ padding: "4px 8px" }}>
+                              {row.size || "—"}
+                            </td>
+                            {measurementKeys.map((key) => (
+                              <td key={key} style={{ padding: "4px 8px" }}>
+                                {row.measurements?.[key] ?? "—"}
+                              </td>
+                            ))}
+                          </tr>
+                        ))}
                       </tbody>
                     </table>
                     {sizeChart.notes?.length ? (
@@ -524,7 +497,7 @@ export default function GenerationJobPage() {
 
             {!startBlocked && blockers.softWarnings.length > 0 ? (
               <s-banner tone="warning">
-                <s-stack direction="block" gap="small">
+                <s-stack direction="block" gap="base">
                   <s-text type="strong">
                     作成は可能ですが、以下の不足があります
                   </s-text>
