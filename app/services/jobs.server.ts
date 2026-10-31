@@ -1,5 +1,13 @@
 import prisma from "../db.server";
-import { parseSizeChart } from "./size-chart.server";
+import {
+  applyManualEdits,
+  buildCollectedSnapshot,
+  PRODUCT_NODES_QUERY,
+  productsMissingImages,
+  type AdminProductNode,
+  type ManualEditsPayload,
+} from "./product-collect.server";
+import { normalizeManualSizeChart } from "./size-chart.server";
 import {
   extractAssetStubsFromOutput,
   getTrellisRunStatus,
@@ -72,37 +80,9 @@ type AdminGraphql = {
   ) => Promise<Response>;
 };
 
-const PRODUCT_NODES_QUERY = `#graphql
-  query ProductNodes($ids: [ID!]!) {
-    nodes(ids: $ids) {
-      ... on Product {
-        id
-        title
-        handle
-        descriptionHtml
-        images(first: 50) {
-          nodes {
-            id
-            url
-            altText
-          }
-        }
-        metafields(first: 50) {
-          nodes {
-            namespace
-            key
-            type
-            value
-          }
-        }
-      }
-    }
-  }
-`;
-
 /**
  * Create a GenerationJob and ProductSnapshots from selected product IDs.
- * Collection uses Admin GraphQL; size chart via stub parser.
+ * Collection uses Admin GraphQL (media + images + metafields + description).
  */
 export async function createGenerationJob(opts: {
   shopDomain: string;
@@ -121,25 +101,17 @@ export async function createGenerationJob(opts: {
   });
   const json = (await response.json()) as {
     data?: {
-      nodes?: Array<{
-        id?: string;
-        title?: string;
-        handle?: string;
-        descriptionHtml?: string;
-        images?: { nodes: Array<{ id: string; url: string; altText?: string }> };
-        metafields?: {
-          nodes: Array<{
-            namespace: string;
-            key: string;
-            type: string;
-            value: string;
-          }>;
-        };
-      } | null>;
+      nodes?: Array<AdminProductNode | null>;
     };
+    errors?: Array<{ message?: string }>;
   };
 
-  const nodes = (json.data?.nodes || []).filter(Boolean);
+  if (json.errors?.length) {
+    const msg = json.errors.map((e) => e.message || "GraphQL error").join("; ");
+    throw new Error(`Shopify Admin API 収集エラー: ${msg}`);
+  }
+
+  const nodes = (json.data?.nodes || []).filter(Boolean) as AdminProductNode[];
 
   const job = await prisma.generationJob.create({
     data: {
@@ -150,25 +122,21 @@ export async function createGenerationJob(opts: {
       products: {
         create: productIds.map((gid) => {
           const node = nodes.find((n) => n?.id === gid);
-          const images = node?.images?.nodes || [];
-          const metafields = node?.metafields?.nodes || [];
-          const sizeChart = parseSizeChart(node?.descriptionHtml);
-          const missing: string[] = [];
-          if (images.length === 0) missing.push("images");
-          if (sizeChart.incomplete) missing.push("size_chart");
-          if (metafields.length === 0) missing.push("metafields");
-          if (!node) missing.push("product_not_found");
+          const collected = buildCollectedSnapshot({ gid, node });
 
           return {
             shopifyProductId: gid,
-            handle: node?.handle ?? null,
-            title: node?.title ?? gid,
-            descriptionHtml: node?.descriptionHtml ?? null,
-            imagesJson: JSON.stringify(images),
-            metafieldsJson: JSON.stringify(metafields),
-            sizeChartJson: JSON.stringify(sizeChart),
+            handle: collected.handle,
+            title: collected.title,
+            descriptionHtml: collected.descriptionHtml,
+            imagesJson: JSON.stringify(collected.images),
+            metafieldsJson: JSON.stringify({
+              fields: collected.metafields,
+              modelMeta: collected.modelMeta,
+            }),
+            sizeChartJson: JSON.stringify(collected.sizeChart),
             manualEditsJson: "{}",
-            missingFlagsJson: JSON.stringify(missing),
+            missingFlagsJson: JSON.stringify(collected.missing),
           };
         }),
       },
@@ -258,15 +226,41 @@ async function upsertAssetStubs(opts: {
   return created;
 }
 
+export class GenerationBlockedError extends Error {
+  readonly code = "IMAGES_REQUIRED";
+  readonly productTitles: string[];
+
+  constructor(productTitles: string[]) {
+    super(
+      `写真がない商品があるため作成を開始できません: ${productTitles.join(", ")}`,
+    );
+    this.name = "GenerationBlockedError";
+    this.productTitles = productTitles;
+  }
+}
+
 /**
  * Confirm review and kick off RunPod (mock or live) for each product snapshot.
  * Generation uses photos only — size chart is ignored here by design.
+ * Blocks when any product has zero images (required for TRELLIS photo input).
  */
 export async function confirmAndStartGeneration(jobId: string) {
   const job = await getGenerationJob(jobId);
   if (!job) throw new Error("Job not found");
   if (job.status !== "review" && job.status !== "collecting") {
     throw new Error(`Job status ${job.status} cannot start generation`);
+  }
+
+  const missingPhotoTitles = productsMissingImages(
+    job.products.map((p) => ({
+      missingFlagsJson: p.missingFlagsJson,
+      imagesJson: p.imagesJson,
+      title: p.title,
+      shopifyProductId: p.shopifyProductId,
+    })),
+  );
+  if (missingPhotoTitles.length > 0) {
+    throw new GenerationBlockedError(missingPhotoTitles);
   }
 
   const updated = await prisma.generationJob.update({
@@ -283,12 +277,18 @@ export async function confirmAndStartGeneration(jobId: string) {
   for (const product of job.products) {
     const images = JSON.parse(product.imagesJson) as Array<{
       url: string;
-      altText?: string;
+      altText?: string | null;
     }>;
     const imageInputs: RunPodImageInput[] = images.map((img) => ({
       url: img.url,
-      alt: img.altText,
+      alt: img.altText || undefined,
     }));
+
+    if (imageInputs.length === 0) {
+      throw new GenerationBlockedError([
+        product.title || product.shopifyProductId,
+      ]);
+    }
 
     const engineRun = await prisma.engineRun.create({
       data: {
@@ -310,9 +310,7 @@ export async function confirmAndStartGeneration(jobId: string) {
     try {
       const result = await submitTrellisRun({
         productSnapshotId: product.id,
-        images: imageInputs.length
-          ? imageInputs
-          : [{ url: "https://example.invalid/missing.jpg", alt: "placeholder" }],
+        images: imageInputs,
         meta: {
           shopifyProductId: product.shopifyProductId,
           // Size chart intentionally omitted
@@ -502,12 +500,137 @@ export async function pollAndSyncEngineRuns(jobId: string) {
   };
 }
 
+/**
+ * Persist merchant manual edits and refresh missing flags / size chart
+ * when a structured override is provided.
+ */
 export async function updateProductManualEdits(
   snapshotId: string,
-  manualEdits: Record<string, unknown>,
+  manualEdits: ManualEditsPayload & Record<string, unknown>,
 ) {
+  const existing = await prisma.productSnapshot.findUnique({
+    where: { id: snapshotId },
+  });
+  if (!existing) throw new Error("Product snapshot not found");
+
+  let prev: ManualEditsPayload = {};
+  try {
+    prev = JSON.parse(existing.manualEditsJson || "{}") as ManualEditsPayload;
+  } catch {
+    prev = {};
+  }
+
+  const merged: ManualEditsPayload = {
+    ...prev,
+    ...manualEdits,
+    updatedAt: new Date().toISOString(),
+  };
+
+  let sizeChartJson = existing.sizeChartJson;
+  let parsedChart = null as ReturnType<typeof normalizeManualSizeChart>;
+  if (merged.sizeChartOverride) {
+    parsedChart = normalizeManualSizeChart(merged.sizeChartOverride);
+    if (parsedChart && parsedChart.rows.length > 0) {
+      merged.sizeChartJson = parsedChart;
+      sizeChartJson = JSON.stringify(parsedChart);
+    }
+  }
+
+  let images: unknown[] = [];
+  try {
+    images = JSON.parse(existing.imagesJson) as unknown[];
+  } catch {
+    images = [];
+  }
+
+  let metafieldsBlob: {
+    fields?: unknown[];
+    modelMeta?: ManualEditsPayload["modelMetaOverride"];
+  } = {};
+  try {
+    metafieldsBlob = JSON.parse(existing.metafieldsJson || "{}") as typeof metafieldsBlob;
+  } catch {
+    metafieldsBlob = {};
+  }
+
+  let baseChart;
+  try {
+    baseChart = JSON.parse(existing.sizeChartJson) as Parameters<
+      typeof applyManualEdits
+    >[0]["sizeChart"];
+  } catch {
+    baseChart = {
+      rows: [],
+      unit: null,
+      incomplete: true,
+      notes: [],
+      rawMatches: [],
+      source: "none" as const,
+    };
+  }
+
+  const effective = applyManualEdits({
+    images: images as Parameters<typeof applyManualEdits>[0]["images"],
+    sizeChart: parsedChart?.rows.length ? parsedChart : baseChart,
+    modelMeta: {
+      heightCm: null,
+      weightKg: null,
+      bustCm: null,
+      waistCm: null,
+      hipCm: null,
+      sizeWorn: null,
+      notes: [],
+      sourceKeys: [],
+      ...(metafieldsBlob.modelMeta || {}),
+    },
+    descriptionHtml: existing.descriptionHtml,
+    productFound: !JSON.parse(existing.missingFlagsJson || "[]").includes(
+      "product_not_found",
+    ),
+    manualEdits: merged,
+  });
+
   return prisma.productSnapshot.update({
     where: { id: snapshotId },
-    data: { manualEditsJson: JSON.stringify(manualEdits) },
+    data: {
+      manualEditsJson: JSON.stringify(merged),
+      sizeChartJson,
+      missingFlagsJson: JSON.stringify(effective.missing),
+      reviewNotes:
+        typeof merged.reviewNotes === "string" ? merged.reviewNotes : existing.reviewNotes,
+    },
   });
+}
+
+/** Summarize job-level blockers for the review UI. */
+export function getJobStartBlockers(
+  products: Array<{
+    title: string | null;
+    shopifyProductId: string;
+    missingFlagsJson: string;
+    imagesJson: string;
+  }>,
+) {
+  const missingImages = productsMissingImages(products);
+  const softWarnings: string[] = [];
+  for (const p of products) {
+    let flags: string[] = [];
+    try {
+      flags = JSON.parse(p.missingFlagsJson) as string[];
+    } catch {
+      flags = [];
+    }
+    const label = p.title || p.shopifyProductId;
+    if (flags.includes("size_chart")) {
+      softWarnings.push(`${label}: サイズ表未解析（後工程用・作成は可能）`);
+    }
+    if (flags.includes("model_meta")) {
+      softWarnings.push(`${label}: モデル体型メタなし（任意）`);
+    }
+  }
+  return {
+    blocked: missingImages.length > 0,
+    missingImages,
+    softWarnings,
+  };
 }

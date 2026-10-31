@@ -18,7 +18,8 @@
     "graphql-codegen": "graphql-codegen",
     "vite": "vite",
     "typecheck": "react-router typegen && tsc --noEmit",
-    "smoke:runpod": "tsx scripts/smoke-runpod.mjs"
+    "smoke:runpod": "tsx scripts/smoke-runpod.mjs",
+    "smoke:size-chart": "node scripts/smoke-size-chart.mjs"
   },
   "type": "module",
   "engines": {
@@ -58,6 +59,7 @@
     "eslint-plugin-react-hooks": "^7.0.1",
     "graphql-config": "^5.1.1",
     "prettier": "^3.6.2",
+    "tsx": "^4.23.15",
     "typescript": "^5.9.3",
     "vite": "^7.3.1"
   },

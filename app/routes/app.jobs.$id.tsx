@@ -8,10 +8,20 @@ import { boundary } from "@shopify/shopify-app-react-router/server";
 import { authenticate } from "../shopify.server";
 import {
   confirmAndStartGeneration,
+  GenerationBlockedError,
   getGenerationJob,
+  getJobStartBlockers,
   pollAndSyncEngineRuns,
   updateProductManualEdits,
 } from "../services/jobs.server";
+import {
+  MISSING_FLAG_LABELS,
+  type CollectedImage,
+  type CollectedMetafield,
+  type MissingFlag,
+  type ModelBodyMeta,
+} from "../services/product-collect.server";
+import type { SizeChartParseResult } from "../services/size-chart.server";
 import {
   getRunPodPublicConfig,
   isRunPodMockMode,
@@ -24,8 +34,11 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
     throw new Response("Job not found", { status: 404 });
   }
 
+  const blockers = getJobStartBlockers(job.products);
+
   return {
     job,
+    blockers,
     runpodMock: isRunPodMockMode(),
     runpod: getRunPodPublicConfig(),
   };
@@ -49,13 +62,25 @@ export const action = async ({ request, params }: ActionFunctionArgs) => {
   }
 
   if (intent === "confirm_start") {
-    const result = await confirmAndStartGeneration(params.id!);
-    return {
-      ok: true,
-      intent: "confirm_start" as const,
-      mock: result.mock,
-      runCount: result.runs.length,
-    };
+    try {
+      const result = await confirmAndStartGeneration(params.id!);
+      return {
+        ok: true,
+        intent: "confirm_start" as const,
+        mock: result.mock,
+        runCount: result.runs.length,
+      };
+    } catch (err) {
+      if (err instanceof GenerationBlockedError) {
+        return {
+          ok: false,
+          intent: "confirm_start" as const,
+          error: err.message,
+          missingImages: err.productTitles,
+        };
+      }
+      throw err;
+    }
   }
 
   if (intent === "poll_status") {
@@ -73,16 +98,57 @@ export const action = async ({ request, params }: ActionFunctionArgs) => {
   return { ok: false, intent: "unknown" as const };
 };
 
-function safeJson(raw: string) {
+function safeJson<T>(raw: string, fallback: T): T {
   try {
-    return JSON.parse(raw);
+    return JSON.parse(raw) as T;
   } catch {
-    return raw;
+    return fallback;
   }
 }
 
+function readMetafields(raw: string): {
+  fields: CollectedMetafield[];
+  modelMeta: ModelBodyMeta | null;
+} {
+  const parsed = safeJson<unknown>(raw, []);
+  if (Array.isArray(parsed)) {
+    return { fields: parsed as CollectedMetafield[], modelMeta: null };
+  }
+  if (parsed && typeof parsed === "object") {
+    const obj = parsed as {
+      fields?: CollectedMetafield[];
+      modelMeta?: ModelBodyMeta;
+    };
+    return {
+      fields: Array.isArray(obj.fields) ? obj.fields : [],
+      modelMeta: obj.modelMeta || null,
+    };
+  }
+  return { fields: [], modelMeta: null };
+}
+
+function flagLabel(flag: string): string {
+  return MISSING_FLAG_LABELS[flag as MissingFlag] || flag;
+}
+
+function defaultSizeChartEditorValue(
+  sizeChart: SizeChartParseResult,
+  override: string | null | undefined,
+): string {
+  if (override?.trim()) return override;
+  return JSON.stringify(
+    {
+      unit: sizeChart.unit,
+      rows: sizeChart.rows,
+      notes: sizeChart.notes,
+    },
+    null,
+    2,
+  );
+}
+
 export default function GenerationJobPage() {
-  const { job, runpodMock, runpod } = useLoaderData<typeof loader>();
+  const { job, blockers, runpodMock, runpod } = useLoaderData<typeof loader>();
   const actionData = useActionData<typeof action>();
   const navigation = useNavigation();
   const busy = navigation.state !== "idle";
@@ -92,6 +158,7 @@ export default function GenerationJobPage() {
     job.engineRuns.some((r) =>
       ["queued", "submitted", "running", "succeeded"].includes(r.status),
     );
+  const startBlocked = blockers.blocked;
 
   return (
     <s-page heading={job.title || `ジョブ ${job.id}`}>
@@ -101,10 +168,15 @@ export default function GenerationJobPage() {
           {runpodMock
             ? " ／ RunPod: モックモード（APIキー未設定）"
             : " ／ RunPod: ライブ設定あり"}
-          {runpod.endpointIdConfigured
-            ? ""
-            : " ／ ENDPOINT_ID 未設定"}
+          {runpod.endpointIdConfigured ? "" : " ／ ENDPOINT_ID 未設定"}
         </s-banner>
+
+        {actionData &&
+        "intent" in actionData &&
+        actionData.intent === "save_edits" &&
+        actionData.ok ? (
+          <s-banner tone="success">手動編集を保存しました</s-banner>
+        ) : null}
 
         {actionData &&
         "intent" in actionData &&
@@ -114,6 +186,14 @@ export default function GenerationJobPage() {
             作成を開始しました（engine runs: {actionData.runCount}
             {actionData.mock ? ", mock" : ""}）—「状態を更新」でポーリングできます
           </s-banner>
+        ) : null}
+
+        {actionData &&
+        "intent" in actionData &&
+        actionData.intent === "confirm_start" &&
+        !actionData.ok &&
+        "error" in actionData ? (
+          <s-banner tone="critical">{actionData.error}</s-banner>
         ) : null}
 
         {actionData &&
@@ -129,24 +209,35 @@ export default function GenerationJobPage() {
 
         <s-section heading="選択商品の収集結果">
           <s-paragraph>
-            画像・サイズ表解析・メタフィールドを確認し、不足があれば手動で補完してから作成を開始してください。
-            3D 生成自体は写真のみを使用します（サイズ表は生成には使いません）。
+            画像・サイズ表・メタフィールド（モデル身長・体型）を確認し、不足があれば手動で補完してから作成を開始してください。
+            3D 生成は写真のみを使用します（サイズ表は生成には使いません・後のサイズ展開用）。
           </s-paragraph>
         </s-section>
 
         {job.products.map((product) => {
-          const images = safeJson(product.imagesJson) as Array<{
-            id?: string;
-            url: string;
-            altText?: string;
-          }>;
-          const metafields = safeJson(product.metafieldsJson) as unknown[];
-          const sizeChart = safeJson(product.sizeChartJson);
-          const missing = safeJson(product.missingFlagsJson) as string[];
-          const manual = safeJson(product.manualEditsJson) as {
+          const images = safeJson<CollectedImage[]>(product.imagesJson, []);
+          const { fields: metafields, modelMeta } = readMetafields(
+            product.metafieldsJson,
+          );
+          const sizeChart = safeJson<SizeChartParseResult>(product.sizeChartJson, {
+            rows: [],
+            unit: null,
+            incomplete: true,
+            notes: [],
+            rawMatches: [],
+            source: "none",
+          });
+          const missing = safeJson<string[]>(product.missingFlagsJson, []);
+          const manual = safeJson<{
             reviewNotes?: string;
             sizeChartOverride?: string;
-          };
+          }>(product.manualEditsJson, {});
+          const criticalMissing = missing.includes("images");
+          const modelFields = metafields.filter((mf) =>
+            /model|モデル|身長|height|body|体型|worn|着用/i.test(
+              `${mf.namespace}.${mf.key} ${mf.description || ""}`,
+            ),
+          );
 
           return (
             <s-section
@@ -160,19 +251,31 @@ export default function GenerationJobPage() {
                 </s-paragraph>
 
                 {missing.length > 0 ? (
-                  <s-banner tone="warning">
-                    不足フラグ: {missing.join(", ")}
+                  <s-banner tone={criticalMissing ? "critical" : "warning"}>
+                    <s-stack direction="block" gap="small">
+                      <s-text type="strong">不足フラグ</s-text>
+                      <ul style={{ margin: 0, paddingLeft: "1.25rem" }}>
+                        {missing.map((flag) => (
+                          <li key={flag}>{flagLabel(flag)}</li>
+                        ))}
+                      </ul>
+                    </s-stack>
                   </s-banner>
                 ) : (
                   <s-banner tone="success">必須データの欠損フラグなし</s-banner>
                 )}
 
-                <s-heading>画像（プレースホルダ表示）</s-heading>
+                <s-heading>
+                  画像ギャラリー（{images.length} 枚）
+                  {criticalMissing ? " — 3D作成に必須" : ""}
+                </s-heading>
                 {images.length === 0 ? (
-                  <s-paragraph>画像がありません</s-paragraph>
+                  <s-banner tone="critical">
+                    商品写真がありません。Shopify 商品に画像を追加してから、もう一度「3D作成」でジョブを作り直してください。
+                  </s-banner>
                 ) : (
                   <s-stack direction="inline" gap="base">
-                    {images.slice(0, 8).map((img, idx) => (
+                    {images.map((img, idx) => (
                       <s-box
                         key={img.id || idx}
                         padding="small"
@@ -180,47 +283,172 @@ export default function GenerationJobPage() {
                         borderRadius="base"
                         background="subdued"
                       >
-                        {/* eslint-disable-next-line jsx-a11y/alt-text */}
-                        <img
-                          src={img.url}
-                          alt={img.altText || product.title || "product"}
-                          width={96}
-                          height={96}
-                          style={{ objectFit: "cover", display: "block" }}
-                        />
+                        <a
+                          href={img.url}
+                          target="_blank"
+                          rel="noreferrer"
+                          title={img.altText || `image ${idx + 1}`}
+                        >
+                          {/* eslint-disable-next-line jsx-a11y/alt-text */}
+                          <img
+                            src={img.url}
+                            alt={img.altText || product.title || "product"}
+                            width={120}
+                            height={120}
+                            style={{ objectFit: "cover", display: "block" }}
+                            loading="lazy"
+                          />
+                        </a>
+                        <s-paragraph>
+                          #{img.position || idx + 1}
+                          {img.source ? ` · ${img.source}` : ""}
+                        </s-paragraph>
                       </s-box>
                     ))}
-                    {images.length > 8 ? (
-                      <s-paragraph>+{images.length - 8} 枚</s-paragraph>
-                    ) : null}
                   </s-stack>
                 )}
 
-                <s-heading>サイズ表解析（スタブ）</s-heading>
+                <s-heading>
+                  サイズ表
+                  {sizeChart.source ? `（解析: ${sizeChart.source}）` : ""}
+                  {sizeChart.unit ? ` / 単位: ${sizeChart.unit}` : ""}
+                </s-heading>
+                {sizeChart.rows.length > 0 ? (
+                  <s-box
+                    padding="base"
+                    borderWidth="base"
+                    borderRadius="base"
+                    background="subdued"
+                  >
+                    <table
+                      style={{
+                        width: "100%",
+                        borderCollapse: "collapse",
+                        fontSize: "13px",
+                      }}
+                    >
+                      <thead>
+                        <tr>
+                          <th style={{ textAlign: "left", padding: "4px 8px" }}>
+                            サイズ
+                          </th>
+                          {Array.from(
+                            new Set(
+                              sizeChart.rows.flatMap((r) =>
+                                Object.keys(r.measurements || {}),
+                              ),
+                            ),
+                          ).map((key) => (
+                            <th
+                              key={key}
+                              style={{ textAlign: "left", padding: "4px 8px" }}
+                            >
+                              {key}
+                            </th>
+                          ))}
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {sizeChart.rows.map((row) => {
+                          const keys = Array.from(
+                            new Set(
+                              sizeChart.rows.flatMap((r) =>
+                                Object.keys(r.measurements || {}),
+                              ),
+                            ),
+                          );
+                          return (
+                            <tr key={row.size}>
+                              <td style={{ padding: "4px 8px" }}>{row.size}</td>
+                              {keys.map((key) => (
+                                <td key={key} style={{ padding: "4px 8px" }}>
+                                  {row.measurements?.[key] ?? "—"}
+                                </td>
+                              ))}
+                            </tr>
+                          );
+                        })}
+                      </tbody>
+                    </table>
+                    {sizeChart.notes?.length ? (
+                      <s-paragraph>{sizeChart.notes.join(" / ")}</s-paragraph>
+                    ) : null}
+                  </s-box>
+                ) : (
+                  <s-banner tone="warning">
+                    サイズ表を自動解析できませんでした。下の JSON
+                    で手動入力できます（後工程用・3D生成には使いません）。
+                  </s-banner>
+                )}
+
+                <s-heading>モデル身長・体型（メタフィールド）</s-heading>
+                {modelMeta &&
+                (modelMeta.heightCm != null ||
+                  modelMeta.weightKg != null ||
+                  modelMeta.sizeWorn) ? (
+                  <s-box
+                    padding="base"
+                    borderWidth="base"
+                    borderRadius="base"
+                    background="subdued"
+                  >
+                    <s-paragraph>
+                      身長: {modelMeta.heightCm ?? "—"} cm ／ 体重:{" "}
+                      {modelMeta.weightKg ?? "—"} kg ／ 着用サイズ:{" "}
+                      {modelMeta.sizeWorn ?? "—"}
+                      {modelMeta.bustCm != null
+                        ? ` ／ B ${modelMeta.bustCm}`
+                        : ""}
+                      {modelMeta.waistCm != null
+                        ? ` W ${modelMeta.waistCm}`
+                        : ""}
+                      {modelMeta.hipCm != null ? ` H ${modelMeta.hipCm}` : ""}
+                    </s-paragraph>
+                    {modelMeta.sourceKeys?.length ? (
+                      <s-paragraph>
+                        参照キー: {modelMeta.sourceKeys.join(", ")}
+                      </s-paragraph>
+                    ) : null}
+                  </s-box>
+                ) : (
+                  <s-paragraph>
+                    モデル身長・体型の抽出結果なし
+                    {modelMeta?.notes?.length
+                      ? `（${modelMeta.notes.join(" / ")}）`
+                      : ""}
+                  </s-paragraph>
+                )}
+
+                <s-heading>
+                  メタフィールド一覧（{metafields.length} 件
+                  {modelFields.length
+                    ? ` / モデル関連 ${modelFields.length}`
+                    : ""}
+                  ）
+                </s-heading>
                 <s-box
                   padding="base"
                   borderWidth="base"
                   borderRadius="base"
                   background="subdued"
                 >
-                  <pre style={{ margin: 0, whiteSpace: "pre-wrap" }}>
-                    {JSON.stringify(sizeChart, null, 2)}
-                  </pre>
+                  {metafields.length === 0 ? (
+                    <s-paragraph>メタフィールドなし</s-paragraph>
+                  ) : (
+                    <pre style={{ margin: 0, whiteSpace: "pre-wrap" }}>
+                      {JSON.stringify(
+                        (modelFields.length ? modelFields : metafields).slice(
+                          0,
+                          40,
+                        ),
+                        null,
+                        2,
+                      )}
+                    </pre>
+                  )}
                 </s-box>
 
-                <s-heading>メタフィールド</s-heading>
-                <s-box
-                  padding="base"
-                  borderWidth="base"
-                  borderRadius="base"
-                  background="subdued"
-                >
-                  <pre style={{ margin: 0, whiteSpace: "pre-wrap" }}>
-                    {JSON.stringify(metafields, null, 2)}
-                  </pre>
-                </s-box>
-
-                <s-heading>手動編集</s-heading>
+                <s-heading>手動編集（保存で不足フラグを再計算）</s-heading>
                 <Form method="post">
                   <input type="hidden" name="intent" value="save_edits" />
                   <input type="hidden" name="snapshotId" value={product.id} />
@@ -229,13 +457,18 @@ export default function GenerationJobPage() {
                       name="reviewNotes"
                       label="レビューメモ"
                       rows={3}
-                      defaultValue={manual.reviewNotes || ""}
+                      defaultValue={
+                        manual.reviewNotes || product.reviewNotes || ""
+                      }
                     />
                     <s-text-area
                       name="sizeChartOverride"
-                      label="サイズ表の手動補正（自由記述 / JSON可）"
-                      rows={4}
-                      defaultValue={manual.sizeChartOverride || ""}
+                      label="サイズ表の手動補正（JSON: { unit, rows: [{ size, measurements }] }）"
+                      rows={10}
+                      defaultValue={defaultSizeChartEditorValue(
+                        sizeChart,
+                        manual.sizeChartOverride,
+                      )}
                     />
                     <s-button type="submit" variant="secondary" disabled={busy}>
                       この商品の手動編集を保存
@@ -279,14 +512,37 @@ export default function GenerationJobPage() {
               確認後、RunPod へ写真のみの生成ジョブを投入します。ComfyUI /
               TRELLIS.2 ワークフロー JSON は{" "}
               <code>config/runpod-trellis-workflow.json</code>{" "}
-             （または env）で編集できます。
+              （または env）で編集できます。キー未設定時はモックのまま動作します。
             </s-paragraph>
+
+            {startBlocked ? (
+              <s-banner tone="critical">
+                写真がない商品があるため「確認して作成開始」を実行できません:{" "}
+                {blockers.missingImages.join(", ")}
+              </s-banner>
+            ) : null}
+
+            {!startBlocked && blockers.softWarnings.length > 0 ? (
+              <s-banner tone="warning">
+                <s-stack direction="block" gap="small">
+                  <s-text type="strong">
+                    作成は可能ですが、以下の不足があります
+                  </s-text>
+                  <ul style={{ margin: 0, paddingLeft: "1.25rem" }}>
+                    {blockers.softWarnings.map((w) => (
+                      <li key={w}>{w}</li>
+                    ))}
+                  </ul>
+                </s-stack>
+              </s-banner>
+            ) : null}
+
             <Form method="post">
               <input type="hidden" name="intent" value="confirm_start" />
               <s-button
                 type="submit"
                 variant="primary"
-                disabled={busy || !canStart}
+                disabled={busy || !canStart || startBlocked}
               >
                 確認して作成開始
               </s-button>
