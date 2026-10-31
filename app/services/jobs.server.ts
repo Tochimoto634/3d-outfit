@@ -553,6 +553,31 @@ export async function updateProductManualEdits(
     metafieldsBlob = {};
   }
 
+  if (merged.modelMetaOverride) {
+    const prevMeta = metafieldsBlob.modelMeta || {};
+    const nextSourceKeys = [
+      ...(prevMeta.sourceKeys || []),
+      "manual_override",
+    ].filter((v, i, arr) => arr.indexOf(v) === i);
+    metafieldsBlob = {
+      ...metafieldsBlob,
+      fields: Array.isArray(metafieldsBlob.fields) ? metafieldsBlob.fields : [],
+      modelMeta: {
+        heightCm:
+          merged.modelMetaOverride.heightCm ?? prevMeta.heightCm ?? null,
+        weightKg:
+          merged.modelMetaOverride.weightKg ?? prevMeta.weightKg ?? null,
+        bustCm: merged.modelMetaOverride.bustCm ?? prevMeta.bustCm ?? null,
+        waistCm: merged.modelMetaOverride.waistCm ?? prevMeta.waistCm ?? null,
+        hipCm: merged.modelMetaOverride.hipCm ?? prevMeta.hipCm ?? null,
+        sizeWorn:
+          merged.modelMetaOverride.sizeWorn ?? prevMeta.sizeWorn ?? null,
+        notes: prevMeta.notes || [],
+        sourceKeys: nextSourceKeys,
+      },
+    };
+  }
+
   let baseChart;
   try {
     baseChart = JSON.parse(existing.sizeChartJson) as Parameters<
@@ -595,6 +620,7 @@ export async function updateProductManualEdits(
     data: {
       manualEditsJson: JSON.stringify(merged),
       sizeChartJson,
+      metafieldsJson: JSON.stringify(metafieldsBlob),
       missingFlagsJson: JSON.stringify(effective.missing),
       reviewNotes:
         typeof merged.reviewNotes === "string" ? merged.reviewNotes : existing.reviewNotes,

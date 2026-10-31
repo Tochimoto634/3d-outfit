@@ -135,3 +135,170 @@ export function readSizeChartBlob(raw: string): SizeChartView {
     source: typeof obj.source === "string" ? obj.source : "none",
   };
 }
+
+/** Japanese labels for size-chart measurement columns (operators). */
+export const MEASUREMENT_LABELS_JA: Record<string, string> = {
+  shoulder: "肩幅",
+  bust: "身幅",
+  chest: "胸囲",
+  waist: "ウエスト",
+  hip: "ヒップ",
+  length: "着丈",
+  sleeve: "袖丈",
+  hem: "裾幅",
+};
+
+/** Default columns when no chart was parsed (editable blank table). */
+export const DEFAULT_MEASUREMENT_KEYS = [
+  "shoulder",
+  "bust",
+  "length",
+  "sleeve",
+] as const;
+
+/** Default blank sizes for empty charts. */
+export const DEFAULT_SIZE_LABELS = ["S", "M", "L"] as const;
+
+export function measurementLabelJa(key: string): string {
+  return MEASUREMENT_LABELS_JA[key] || key;
+}
+
+export function collectMeasurementKeys(
+  rows: SizeChartRowView[],
+  fallback: readonly string[] = DEFAULT_MEASUREMENT_KEYS,
+): string[] {
+  const keys = Array.from(
+    new Set(rows.flatMap((r) => Object.keys(r?.measurements || {}))),
+  );
+  return keys.length > 0 ? keys : [...fallback];
+}
+
+/** Rows shown in the editable table (pad with defaults when empty). */
+export function editableSizeChartRows(
+  sizeChart: SizeChartView,
+): SizeChartRowView[] {
+  if (sizeChart.rows.length > 0) return sizeChart.rows;
+  return DEFAULT_SIZE_LABELS.map((size) => ({
+    size,
+    measurements: Object.fromEntries(
+      DEFAULT_MEASUREMENT_KEYS.map((k) => [k, ""]),
+    ),
+  }));
+}
+
+export type ManualEditsView = {
+  reviewNotes?: string;
+  sizeChartOverride?: string | null;
+  modelMetaOverride?: Partial<ModelBodyMeta> | null;
+  updatedAt?: string;
+};
+
+export function readManualEditsBlob(raw: string): ManualEditsView {
+  const parsed = safeJsonParse<unknown>(raw, {});
+  if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
+    return {};
+  }
+  return parsed as ManualEditsView;
+}
+
+/** Merge collected model meta with merchant override for display / form defaults. */
+export function effectiveModelMeta(
+  base: ModelBodyMeta | null,
+  override?: Partial<ModelBodyMeta> | null,
+): ModelBodyMeta {
+  return {
+    heightCm: override?.heightCm ?? base?.heightCm ?? null,
+    weightKg: override?.weightKg ?? base?.weightKg ?? null,
+    bustCm: override?.bustCm ?? base?.bustCm ?? null,
+    waistCm: override?.waistCm ?? base?.waistCm ?? null,
+    hipCm: override?.hipCm ?? base?.hipCm ?? null,
+    sizeWorn: override?.sizeWorn ?? base?.sizeWorn ?? null,
+    notes: base?.notes || [],
+    sourceKeys: base?.sourceKeys || [],
+  };
+}
+
+function parseOptionalNumber(raw: FormDataEntryValue | null): number | null {
+  if (raw == null) return null;
+  const text = String(raw).trim();
+  if (!text) return null;
+  const n = Number(text);
+  return Number.isFinite(n) ? n : null;
+}
+
+/**
+ * Build a size-chart JSON string from editable table form fields.
+ * Expected names: sc_unit, sc_keys, sc_row_count, sc_size_{i}, sc_m_{i}_{key}
+ */
+export function sizeChartOverrideFromTableForm(form: FormData): string | null {
+  const keysRaw = String(form.get("sc_keys") || "").trim();
+  const keys = keysRaw
+    ? keysRaw
+        .split(",")
+        .map((k) => k.trim())
+        .filter(Boolean)
+    : [...DEFAULT_MEASUREMENT_KEYS];
+  const rowCount = Math.max(
+    0,
+    Math.min(40, Number(form.get("sc_row_count") || 0) || 0),
+  );
+  const unitRaw = String(form.get("sc_unit") || "").trim();
+  const unit =
+    unitRaw === "cm" || unitRaw === "inch" ? unitRaw : unitRaw || null;
+
+  const rows: SizeChartRowView[] = [];
+  for (let i = 0; i < rowCount; i++) {
+    const size = String(form.get(`sc_size_${i}`) || "").trim();
+    if (!size) continue;
+    const measurements: Record<string, number | null> = {};
+    let hasAny = false;
+    for (const key of keys) {
+      const n = parseOptionalNumber(form.get(`sc_m_${i}_${key}`));
+      measurements[key] = n;
+      if (n != null) hasAny = true;
+    }
+    if (!hasAny && keys.every((k) => !String(form.get(`sc_m_${i}_${k}`) || "").trim())) {
+      // Keep size-only rows so merchants can fill later
+      for (const key of keys) measurements[key] = null;
+    }
+    rows.push({ size, measurements });
+  }
+
+  if (rows.length === 0) return null;
+
+  return JSON.stringify(
+    {
+      unit,
+      rows,
+      notes: ["表形式UIから手動編集"],
+    },
+    null,
+    2,
+  );
+}
+
+/** Read model-body labeled fields from the review form. */
+export function modelMetaOverrideFromForm(
+  form: FormData,
+): Partial<ModelBodyMeta> {
+  return {
+    heightCm: parseOptionalNumber(form.get("model_heightCm")),
+    weightKg: parseOptionalNumber(form.get("model_weightKg")),
+    bustCm: parseOptionalNumber(form.get("model_bustCm")),
+    waistCm: parseOptionalNumber(form.get("model_waistCm")),
+    hipCm: parseOptionalNumber(form.get("model_hipCm")),
+    sizeWorn: String(form.get("model_sizeWorn") || "").trim() || null,
+  };
+}
+
+export function sizeChartToEditorJson(sizeChart: SizeChartView): string {
+  return JSON.stringify(
+    {
+      unit: sizeChart.unit,
+      rows: sizeChart.rows,
+      notes: sizeChart.notes,
+    },
+    null,
+    2,
+  );
+}
