@@ -36,20 +36,20 @@ export function normalizeProductIds(raw: string[]): string[] {
 }
 
 /**
- * Parse ids from a request URL search params (Admin Link appends resource ids).
+ * Parse ids from a request URL search params.
+ * Admin Link bulk selection appends repeated `ids[]=<numeric>`;
+ * single-resource links often use `id=<numeric>`.
  */
 export function productIdsFromSearchParams(
   searchParams: URLSearchParams,
 ): string[] {
   const collected: string[] = [];
 
-  for (const key of ["ids", "id", "productIds", "product_ids"]) {
+  for (const key of ["ids", "id", "productIds", "product_ids", "ids[]", "id[]"]) {
     collected.push(...searchParams.getAll(key));
   }
-  // ids[] style
-  collected.push(...searchParams.getAll("ids[]"));
 
-  // Comma-separated
+  // Comma-separated values in a single param
   const expanded = collected.flatMap((v) => v.split(",").map((s) => s.trim()));
   return normalizeProductIds(expanded);
 }

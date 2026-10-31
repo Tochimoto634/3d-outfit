@@ -9,7 +9,7 @@ Shopify アパレル EC 向けの **3D 着用確認アプリ**（埋め込み Ad
 | 層 | 内容 |
 | --- | --- |
 | Shopify アプリ | React Router（旧 Remix 系公式テンプレート）+ Polaris Web Components |
-| 起動導線 | 商品一覧の Admin Link / Selection Action「**3D作成**」→ 埋め込みジョブ画面 |
+| 起動導線 | 商品一覧 ⋯ → アプリ →「**3D作成**」（Admin Link）→ `/app/jobs/new` |
 | データ | Prisma + SQLite（MVP）— `Shop` / `GenerationJob` / `ProductSnapshot` / `Asset3D` / `EngineRun` |
 | 3D エンジン | RunPod 上の ComfyUI + TRELLIS.2（クライアントはスタブ + モック／ライブ切替） |
 
@@ -56,8 +56,8 @@ shopify app dev
 - `/app/jobs` — ジョブ一覧
 - `/app/jobs/new` — 選択商品 ID 受け取り → 収集開始
 - `/app/jobs/:id` — レビュー UI と「確認して作成開始」
-- `extensions/product-3d-create-link` — Admin Link（一括選択）
-- `extensions/product-3d-bulk-action` — Selection Action モーダル
+- `extensions/product-3d-create-link` — Admin Link（商品一覧の選択メニュー「3D作成」）
+- `extensions/product-3d-details-link` — Admin Link（商品詳細のその他のアクション）
 
 ## 現状と次のステップ
 
