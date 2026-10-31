@@ -244,11 +244,21 @@ export class GenerationBlockedError extends Error {
  * Generation uses photos only — size chart is ignored here by design.
  * Blocks when any product has zero images (required for TRELLIS photo input).
  */
+/** Statuses that may kick off (or re-kick) generation from the review UI. */
+const STARTABLE_JOB_STATUSES = new Set([
+  "review",
+  "collecting",
+  "failed",
+  "cancelled",
+]);
+
 export async function confirmAndStartGeneration(jobId: string) {
   const job = await getGenerationJob(jobId);
   if (!job) throw new Error("Job not found");
-  if (job.status !== "review" && job.status !== "collecting") {
-    throw new Error(`Job status ${job.status} cannot start generation`);
+  if (!STARTABLE_JOB_STATUSES.has(job.status)) {
+    throw new Error(
+      `Job status ${job.status} cannot start generation（作成進行中／作成済みのジョブは再開始できません）`,
+    );
   }
 
   const missingPhotoTitles = productsMissingImages(

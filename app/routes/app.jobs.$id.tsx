@@ -8,6 +8,10 @@ import { Form, useActionData, useLoaderData, useNavigation } from "react-router"
 import { boundary } from "@shopify/shopify-app-react-router/server";
 import { authenticate } from "../shopify.server";
 import {
+  createStartIsSubmittable,
+  resolveCreateStartUiState,
+} from "../lib/create-button-state";
+import {
   collectMeasurementKeys,
   detectModelPhotoPresence,
   editableSizeChartRows,
@@ -98,6 +102,15 @@ export const action = async ({ request, params }: ActionFunctionArgs) => {
           intent: "confirm_start" as const,
           error: err.message,
           missingImages: err.productTitles,
+        };
+      }
+      const message = err instanceof Error ? err.message : String(err);
+      // Already generating / ready → surface as banner, not a hard 500
+      if (/cannot start generation/i.test(message)) {
+        return {
+          ok: false,
+          intent: "confirm_start" as const,
+          error: message,
         };
       }
       throw err;
@@ -338,13 +351,25 @@ export default function GenerationJobPage() {
   const actionData = useActionData<typeof action>();
   const navigation = useNavigation();
   const busy = navigation.state !== "idle";
-  const canStart = job.status === "review" || job.status === "collecting";
+  const createUi = resolveCreateStartUiState({
+    jobStatus: job.status,
+    engineRuns: job.engineRuns,
+    imagesBlocked: blockers.blocked,
+    missingImageTitles: blockers.missingImages,
+  });
+  const canSubmitStart = createStartIsSubmittable(createUi);
   const canPoll =
     job.status === "generating" ||
     job.engineRuns.some((r) =>
       ["queued", "submitted", "running", "succeeded"].includes(r.status),
     );
-  const startBlocked = blockers.blocked;
+  const startBlocked = createUi.kind === "blocked_images";
+  /** Soft warnings only matter before / at start — hide once already generating. */
+  const showSoftWarnings =
+    blockers.softWarnings.length > 0 &&
+    (createUi.kind === "startable" ||
+      createUi.kind === "failed_retryable" ||
+      createUi.kind === "cancelled");
 
   return (
     <s-page heading={job.title || `ジョブ ${job.id}`}>
@@ -824,20 +849,38 @@ export default function GenerationJobPage() {
               TRELLIS.2 ワークフロー JSON は{" "}
               <code>config/runpod-trellis-workflow.json</code>{" "}
               （または env）で編集できます。キー未設定時はモックのまま動作します。
+              モデル体型メタやサイズ表の不足は警告のみで、作成開始はブロックしません。
             </s-paragraph>
 
             {startBlocked ? (
               <s-banner tone="critical">
                 写真がない商品があるため「確認して作成開始」を実行できません:{" "}
-                {blockers.missingImages.join(", ")}
+                {(createUi.kind === "blocked_images"
+                  ? createUi.titles
+                  : blockers.missingImages
+                ).join(", ")}
               </s-banner>
             ) : null}
 
-            {!startBlocked && blockers.softWarnings.length > 0 ? (
+            {createUi.kind === "in_progress" ||
+            createUi.kind === "completed" ? (
+              <s-banner
+                tone={createUi.kind === "completed" ? "success" : "info"}
+              >
+                {createUi.reason}
+              </s-banner>
+            ) : null}
+
+            {createUi.kind === "failed_retryable" ||
+            createUi.kind === "cancelled" ? (
+              <s-banner tone="warning">{createUi.reason}</s-banner>
+            ) : null}
+
+            {showSoftWarnings ? (
               <s-banner tone="warning">
                 <s-stack direction="block" gap="base">
                   <s-text type="strong">
-                    作成は可能ですが、以下の不足があります
+                    作成は可能です（不足は任意・作成を止めません）
                   </s-text>
                   <ul style={{ margin: 0, paddingLeft: "1.25rem" }}>
                     {blockers.softWarnings.map((w) => (
@@ -853,11 +896,38 @@ export default function GenerationJobPage() {
               <s-button
                 type="submit"
                 variant="primary"
-                disabled={busy || !canStart || startBlocked}
+                disabled={busy || !canSubmitStart}
+                {...(busy || !canSubmitStart
+                  ? {
+                      accessibilityLabel:
+                        createUi.kind === "in_progress" ||
+                        createUi.kind === "completed"
+                          ? createUi.reason
+                          : startBlocked
+                            ? "写真不足のため作成開始できません"
+                            : "作成開始できません",
+                    }
+                  : {})}
               >
-                確認して作成開始
+                {createUi.kind === "startable"
+                  ? "確認して作成開始"
+                  : createUi.kind === "blocked_images"
+                    ? "確認して作成開始（写真不足で無効）"
+                    : "buttonLabel" in createUi
+                      ? createUi.buttonLabel
+                      : "確認して作成開始"}
               </s-button>
             </Form>
+            {!canSubmitStart &&
+            (createUi.kind === "in_progress" ||
+              createUi.kind === "completed" ||
+              createUi.kind === "blocked_images") ? (
+              <s-paragraph>
+                {createUi.kind === "blocked_images"
+                  ? "無効理由: 写真が1枚もない商品があるため。"
+                  : `無効理由: ${createUi.reason}`}
+              </s-paragraph>
+            ) : null}
             <Form method="post">
               <input type="hidden" name="intent" value="poll_status" />
               <s-button
