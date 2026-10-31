@@ -1,0 +1,38 @@
+{
+  "_comment": "Placeholder ComfyUI graph for a NEW 3D OUTFIT RunPod serverless endpoint (TRELLIS.2). Do not reuse unrelated project endpoints. Copy to runpod-trellis-workflow.json or point RUNPOD_WORKFLOW_PATH at your real export. Photos are injected at submit time — do not put size-chart data here.",
+  "_runpod_comfy_hints": {
+    "typical_payload": "POST /v2/{endpointId}/run  body: { input: { workflow, images, photo_only, ... } }",
+    "worker": "Often runpod-worker-comfy or a custom handler that accepts workflow + image URLs"
+  },
+  "3": {
+    "inputs": {
+      "image": "INPUT_IMAGE_0",
+      "upload": "image"
+    },
+    "class_type": "LoadImage",
+    "_meta": { "title": "Load Product Photo 0" }
+  },
+  "10": {
+    "inputs": {
+      "images": ["3", 0],
+      "seed": 0,
+      "ss_guidance_strength": 7.5,
+      "ss_sampling_steps": 12,
+      "slat_guidance_strength": 3.0,
+      "slat_sampling_steps": 12,
+      "pipeline": "trellis2"
+    },
+    "class_type": "Trellis2ImageTo3D",
+    "_meta": {
+      "title": "TRELLIS.2 Image → 3D (placeholder class_type — replace with your installed custom node)"
+    }
+  },
+  "20": {
+    "inputs": {
+      "model": ["10", 0],
+      "filename_prefix": "3d-outfit-base"
+    },
+    "class_type": "SaveGLB",
+    "_meta": { "title": "Export GLB (placeholder)" }
+  }
+}

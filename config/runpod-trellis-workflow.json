@@ -1,0 +1,34 @@
+{
+  "_comment": "Editable default ComfyUI/TRELLIS.2 workflow placeholder for a NEW 3D OUTFIT Serverless endpoint (do not point RUNPOD_ENDPOINT_ID at unrelated project endpoints). Replace node class_types with your installed TRELLIS.2 custom nodes. Size chart must never be added here.",
+  "3": {
+    "inputs": {
+      "image": "INPUT_IMAGE_0",
+      "upload": "image"
+    },
+    "class_type": "LoadImage",
+    "_meta": { "title": "Load Product Photo 0" }
+  },
+  "10": {
+    "inputs": {
+      "images": ["3", 0],
+      "seed": 0,
+      "ss_guidance_strength": 7.5,
+      "ss_sampling_steps": 12,
+      "slat_guidance_strength": 3.0,
+      "slat_sampling_steps": 12,
+      "pipeline": "trellis2"
+    },
+    "class_type": "Trellis2ImageTo3D",
+    "_meta": {
+      "title": "TRELLIS.2 Image → 3D (placeholder — edit to match your worker)"
+    }
+  },
+  "20": {
+    "inputs": {
+      "model": ["10", 0],
+      "filename_prefix": "3d-outfit-base"
+    },
+    "class_type": "SaveGLB",
+    "_meta": { "title": "Export GLB (placeholder)" }
+  }
+}

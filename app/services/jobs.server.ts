@@ -1,7 +1,10 @@
 import prisma from "../db.server";
 import { parseSizeChart } from "./size-chart.server";
 import {
+  extractAssetStubsFromOutput,
+  getTrellisRunStatus,
   isRunPodMockMode,
+  mapRunPodStatusToEngine,
   submitTrellisRun,
   type RunPodImageInput,
 } from "./runpod.server";
@@ -180,11 +183,79 @@ export async function getGenerationJob(jobId: string) {
   return prisma.generationJob.findUnique({
     where: { id: jobId },
     include: {
-      products: { orderBy: { createdAt: "asc" } },
-      engineRuns: { orderBy: { createdAt: "desc" } },
+      products: {
+        orderBy: { createdAt: "asc" },
+        include: { assets: { orderBy: { createdAt: "desc" } } },
+      },
+      engineRuns: { orderBy: { createdAt: "desc" }, include: { assets: true } },
       shop: true,
     },
   });
+}
+
+function readProductSnapshotId(requestJson: string): string | null {
+  try {
+    const parsed = JSON.parse(requestJson) as { productSnapshotId?: string };
+    return parsed.productSnapshotId || null;
+  } catch {
+    return null;
+  }
+}
+
+async function upsertAssetStubs(opts: {
+  engineRunId: string;
+  productSnapshotId: string;
+  output: unknown;
+  mock: boolean;
+}) {
+  const stubs = extractAssetStubsFromOutput(opts.output);
+  if (stubs.length === 0 && opts.mock) {
+    // Persist an explicit stub row so UI can show "awaiting real GLB"
+    await prisma.asset3D.create({
+      data: {
+        productSnapshotId: opts.productSnapshotId,
+        engineRunId: opts.engineRunId,
+        kind: "base",
+        sizeLabel: "worn",
+        storageUrl: null,
+        mimeType: "model/gltf-binary",
+        metaJson: JSON.stringify({
+          stub: true,
+          mock: true,
+          note: "Mock EngineRun — no GLB URL. Live RunPod output URLs land here.",
+        }),
+      },
+    });
+    return 1;
+  }
+
+  let created = 0;
+  for (const stub of stubs) {
+    const existing = await prisma.asset3D.findFirst({
+      where: {
+        engineRunId: opts.engineRunId,
+        storageUrl: stub.url,
+      },
+    });
+    if (existing) continue;
+    await prisma.asset3D.create({
+      data: {
+        productSnapshotId: opts.productSnapshotId,
+        engineRunId: opts.engineRunId,
+        kind: stub.kind,
+        sizeLabel: stub.kind === "base" ? "worn" : stub.label || null,
+        storageUrl: stub.url,
+        mimeType: stub.mimeType,
+        metaJson: JSON.stringify({
+          stub: false,
+          source: "runpod_output",
+          label: stub.label || null,
+        }),
+      },
+    });
+    created += 1;
+  }
+  return created;
 }
 
 /**
@@ -204,6 +275,7 @@ export async function confirmAndStartGeneration(jobId: string) {
       status: "generating",
       confirmedAt: new Date(),
       startedAt: new Date(),
+      errorMessage: null,
     },
   });
 
@@ -226,7 +298,10 @@ export async function confirmAndStartGeneration(jobId: string) {
         endpointId: process.env.RUNPOD_ENDPOINT_ID || null,
         requestJson: JSON.stringify({
           productSnapshotId: product.id,
+          shopifyProductId: product.shopifyProductId,
           imageCount: imageInputs.length,
+          // Size chart intentionally omitted from generation payload
+          photoOnly: true,
           mock: isRunPodMockMode(),
         }),
       },
@@ -244,13 +319,17 @@ export async function confirmAndStartGeneration(jobId: string) {
         },
       });
 
+      const mapped = mapRunPodStatusToEngine(result.status);
       const saved = await prisma.engineRun.update({
         where: { id: engineRun.id },
         data: {
-          status: "submitted",
+          status: mapped === "succeeded" ? "submitted" : mapped,
           externalRunId: result.externalRunId,
           endpointId: result.endpointId,
-          responseJson: JSON.stringify(result.raw),
+          responseJson: JSON.stringify({
+            submit: result.raw,
+            mode: result.mode,
+          }),
           startedAt: new Date(),
         },
       });
@@ -278,6 +357,149 @@ export async function confirmAndStartGeneration(jobId: string) {
   }
 
   return { job: updated, runs, mock: isRunPodMockMode() };
+}
+
+const TERMINAL_ENGINE = new Set(["succeeded", "failed", "cancelled"]);
+
+/**
+ * Poll RunPod for open EngineRuns, map statuses, store asset URL stubs,
+ * and roll up GenerationJob status (generating → ready / failed).
+ */
+export async function pollAndSyncEngineRuns(jobId: string) {
+  const job = await getGenerationJob(jobId);
+  if (!job) throw new Error("Job not found");
+
+  const updates = [];
+  for (const run of job.engineRuns) {
+    if (!run.externalRunId) continue;
+    if (TERMINAL_ENGINE.has(run.status) && run.status !== "succeeded") {
+      // failed/cancelled stay put; succeeded may still need asset upsert once
+      continue;
+    }
+    if (run.status === "succeeded" && run.assets.length > 0) continue;
+
+    try {
+      const status = await getTrellisRunStatus(run.externalRunId);
+      const mapped = mapRunPodStatusToEngine(status.status);
+      const productSnapshotId = readProductSnapshotId(run.requestJson);
+
+      let responseJson = run.responseJson;
+      try {
+        const prev = JSON.parse(run.responseJson || "{}") as Record<
+          string,
+          unknown
+        >;
+        responseJson = JSON.stringify({
+          ...prev,
+          latest: status.raw,
+          mode: status.mode,
+          polledAt: new Date().toISOString(),
+        });
+      } catch {
+        responseJson = JSON.stringify({ latest: status.raw });
+      }
+
+      const data: {
+        status: typeof mapped;
+        responseJson: string;
+        finishedAt?: Date | null;
+        errorMessage?: string | null;
+      } = {
+        status: mapped,
+        responseJson,
+      };
+
+      if (TERMINAL_ENGINE.has(mapped)) {
+        data.finishedAt = new Date();
+      }
+      if (mapped === "failed") {
+        data.errorMessage =
+          typeof status.output === "object" &&
+          status.output &&
+          "error" in (status.output as object)
+            ? String((status.output as { error?: unknown }).error)
+            : "RunPod reported FAILED";
+      }
+
+      const saved = await prisma.engineRun.update({
+        where: { id: run.id },
+        data,
+      });
+
+      let assetsCreated = 0;
+      if (mapped === "succeeded" && productSnapshotId) {
+        assetsCreated = await upsertAssetStubs({
+          engineRunId: run.id,
+          productSnapshotId,
+          output: status.output,
+          mock: status.mode === "mock",
+        });
+      }
+
+      updates.push({
+        id: saved.id,
+        status: saved.status,
+        externalRunId: saved.externalRunId,
+        assetsCreated,
+        mode: status.mode,
+      });
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      const failed = await prisma.engineRun.update({
+        where: { id: run.id },
+        data: {
+          status: "failed",
+          errorMessage: message,
+          finishedAt: new Date(),
+        },
+      });
+      updates.push({
+        id: failed.id,
+        status: failed.status,
+        externalRunId: failed.externalRunId,
+        assetsCreated: 0,
+        mode: "error" as const,
+      });
+    }
+  }
+
+  const refreshed = await getGenerationJob(jobId);
+  if (!refreshed) throw new Error("Job not found after poll");
+
+  const statuses = refreshed.engineRuns.map((r) => r.status);
+  let nextStatus = refreshed.status;
+  let errorMessage = refreshed.errorMessage;
+
+  if (statuses.length > 0 && statuses.every((s) => TERMINAL_ENGINE.has(s))) {
+    if (statuses.every((s) => s === "failed" || s === "cancelled")) {
+      nextStatus = "failed";
+      errorMessage = errorMessage || "All engine runs failed or cancelled";
+    } else {
+      // Base worn-size assets ready; S/M/L sizing is a later phase
+      nextStatus = "ready";
+      errorMessage = null;
+    }
+  } else if (statuses.some((s) => s === "running" || s === "submitted" || s === "queued")) {
+    nextStatus = "generating";
+  }
+
+  const jobUpdated = await prisma.generationJob.update({
+    where: { id: jobId },
+    data: {
+      status: nextStatus,
+      errorMessage,
+      completedAt:
+        nextStatus === "ready" || nextStatus === "failed"
+          ? new Date()
+          : refreshed.completedAt,
+    },
+  });
+
+  return {
+    job: jobUpdated,
+    updates,
+    mock: isRunPodMockMode(),
+  };
 }
 
 export async function updateProductManualEdits(
