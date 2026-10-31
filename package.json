@@ -19,7 +19,8 @@
     "vite": "vite",
     "typecheck": "react-router typegen && tsc --noEmit",
     "smoke:runpod": "tsx scripts/smoke-runpod.mjs",
-    "smoke:size-chart": "node scripts/smoke-size-chart.mjs"
+    "smoke:size-chart": "node scripts/smoke-size-chart.mjs",
+    "smoke:model-photo": "node scripts/smoke-model-photo.mjs"
   },
   "type": "module",
   "engines": {
