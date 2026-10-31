@@ -1,0 +1,11 @@
+[[extensions]]
+name = "t:name"
+description = "t:description"
+handle = "product-3d-details-link"
+type = "admin_link"
+uid = "7c6f9ca7-5aec-4015-94e5-975a1460ec09"
+
+# Product details More actions → opens embedded Generation Job flow
+[[extensions.targeting]]
+target = "admin.product-details.action.link"
+url = "/app/jobs/new"

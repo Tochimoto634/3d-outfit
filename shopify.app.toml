@@ -1,7 +1,7 @@
 # Learn more about configuring your app at https://shopify.dev/docs/apps/tools/cli/configuration
-# client_id is filled by `shopify app config link` after Partner app creation.
+# client_id linked via `shopify app config link` to Partner app "3D OUTFIT".
 
-client_id = ""
+client_id = "6ea711ac146f63daf3866f4d212cf6df"
 name = "3D OUTFIT"
 application_url = "https://example.com"
 embedded = true
@@ -9,13 +9,6 @@ embedded = true
 [build]
 automatically_update_urls_on_dev = true
 include_config_on_deploy = true
-
-[access_scopes]
-# read/write products for image + description collection; metafields read via Admin API
-scopes = "write_products,read_products"
-
-[auth]
-redirect_urls = [ "https://example.com/api/auth" ]
 
 [webhooks]
 api_version = "2026-10"
@@ -27,3 +20,12 @@ api_version = "2026-10"
   [[webhooks.subscriptions]]
   topics = ["app/scopes_update"]
   uri = "/webhooks/app/scopes_update"
+
+[access_scopes]
+# Partner-linked scopes + write_products for Admin collection work
+scopes = "write_products,read_products,read_files,write_files"
+optional_scopes = [ ]
+use_legacy_install_flow = false
+
+[auth]
+redirect_urls = [ "https://example.com/api/auth" ]
