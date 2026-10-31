@@ -1,3 +1,4 @@
+import type { CSSProperties } from "react";
 import type {
   ActionFunctionArgs,
   HeadersFunction,
@@ -7,14 +8,20 @@ import { Form, useActionData, useLoaderData, useNavigation } from "react-router"
 import { boundary } from "@shopify/shopify-app-react-router/server";
 import { authenticate } from "../shopify.server";
 import {
+  collectMeasurementKeys,
+  editableSizeChartRows,
+  effectiveModelMeta,
+  measurementLabelJa,
   missingFlagLabel,
+  modelMetaOverrideFromForm,
+  readManualEditsBlob,
   readMetafieldsBlob,
   readSizeChartBlob,
   REVIEW_GALLERY_PREVIEW_LIMIT,
   safeJsonArray,
-  safeJsonParse,
+  sizeChartOverrideFromTableForm,
+  sizeChartToEditorJson,
   type CollectedImage,
-  type SizeChartView,
 } from "../lib/product-review";
 import {
   confirmAndStartGeneration,
@@ -54,10 +61,18 @@ export const action = async ({ request, params }: ActionFunctionArgs) => {
   if (intent === "save_edits") {
     const snapshotId = String(form.get("snapshotId") || "");
     const notes = String(form.get("reviewNotes") || "");
-    const sizeChartOverride = String(form.get("sizeChartOverride") || "");
+    const useAdvancedJson = String(form.get("useSizeChartJson") || "") === "1";
+    const advancedJson = String(form.get("sizeChartOverride") || "").trim();
+    const fromTable = sizeChartOverrideFromTableForm(form);
+    const sizeChartOverride = useAdvancedJson
+      ? advancedJson || null
+      : fromTable || advancedJson || null;
+    const modelMetaOverride = modelMetaOverrideFromForm(form);
+
     await updateProductManualEdits(snapshotId, {
       reviewNotes: notes,
-      sizeChartOverride: sizeChartOverride || null,
+      sizeChartOverride,
+      modelMetaOverride,
       updatedAt: new Date().toISOString(),
     });
     return { ok: true, intent: "save_edits" as const };
@@ -100,20 +115,45 @@ export const action = async ({ request, params }: ActionFunctionArgs) => {
   return { ok: false, intent: "unknown" as const };
 };
 
-function defaultSizeChartEditorValue(
-  sizeChart: SizeChartView,
-  override: string | null | undefined,
-): string {
-  if (override?.trim()) return override;
-  return JSON.stringify(
-    {
-      unit: sizeChart.unit,
-      rows: sizeChart.rows,
-      notes: sizeChart.notes,
-    },
-    null,
-    2,
-  );
+const cellInputStyle: CSSProperties = {
+  width: "100%",
+  minWidth: "4.5rem",
+  padding: "6px 8px",
+  border: "1px solid #c9cccf",
+  borderRadius: "6px",
+  fontSize: "13px",
+  boxSizing: "border-box",
+};
+
+const tableStyle: CSSProperties = {
+  width: "100%",
+  borderCollapse: "collapse",
+  fontSize: "13px",
+};
+
+const thStyle: CSSProperties = {
+  textAlign: "left",
+  padding: "6px 8px",
+  borderBottom: "1px solid #dfe3e8",
+  whiteSpace: "nowrap",
+};
+
+const tdStyle: CSSProperties = {
+  padding: "6px 8px",
+  verticalAlign: "middle",
+};
+
+function formatSourceLabel(source?: string | null): string {
+  switch (source) {
+    case "html_table":
+      return "HTMLテーブル";
+    case "heuristic":
+      return "テキスト解析";
+    case "none":
+      return "未解析";
+    default:
+      return source || "不明";
+  }
 }
 
 export default function GenerationJobPage() {
@@ -178,7 +218,7 @@ export default function GenerationJobPage() {
 
         <s-section heading="選択商品の収集結果">
           <s-paragraph>
-            画像・サイズ表・メタフィールド（モデル身長・体型）を確認し、不足があれば手動で補完してから作成を開始してください。
+            画像・サイズ表・モデル体型を表／入力欄で確認し、不足があれば補完してから作成を開始してください。
             3D 生成は写真のみを使用します（サイズ表は生成には使いません・後のサイズ展開用）。
           </s-paragraph>
         </s-section>
@@ -197,23 +237,20 @@ export default function GenerationJobPage() {
           );
           const sizeChart = readSizeChartBlob(product.sizeChartJson);
           const missing = safeJsonArray<string>(product.missingFlagsJson);
-          const manual = safeJsonParse<{
-            reviewNotes?: string;
-            sizeChartOverride?: string;
-          }>(product.manualEditsJson, {});
+          const manual = readManualEditsBlob(product.manualEditsJson);
+          const model = effectiveModelMeta(modelMeta, manual.modelMetaOverride);
           const criticalMissing = missing.includes("images");
-          const modelFields = metafields.filter((mf) =>
+          const measurementKeys = collectMeasurementKeys(sizeChart.rows);
+          const editorRows = editableSizeChartRows(sizeChart);
+          const advancedJsonDefault =
+            manual.sizeChartOverride?.trim() || sizeChartToEditorJson(sizeChart);
+          const modelRelated = metafields.filter((mf) =>
             /model|モデル|身長|height|body|体型|worn|着用/i.test(
               `${mf.namespace || ""}.${mf.key || ""} ${mf.description || ""}`,
             ),
           );
-          const measurementKeys = Array.from(
-            new Set(
-              sizeChart.rows.flatMap((r) =>
-                Object.keys(r?.measurements || {}),
-              ),
-            ),
-          );
+          const metafieldRows =
+            modelRelated.length > 0 ? modelRelated : metafields.slice(0, 40);
 
           return (
             <s-section
@@ -247,7 +284,8 @@ export default function GenerationJobPage() {
                 </s-heading>
                 {images.length === 0 ? (
                   <s-banner tone="critical">
-                    商品写真がありません。Shopify 商品に画像を追加してから、もう一度「3D作成」でジョブを作り直してください。
+                    商品写真がありません。Shopify
+                    商品に画像を追加してから、もう一度「3D作成」でジョブを作り直してください。
                   </s-banner>
                 ) : (
                   <s-stack direction="block" gap="base">
@@ -294,138 +332,334 @@ export default function GenerationJobPage() {
                   </s-stack>
                 )}
 
-                <s-heading>
-                  サイズ表
-                  {sizeChart.source ? `（解析: ${sizeChart.source}）` : ""}
-                  {sizeChart.unit ? ` / 単位: ${sizeChart.unit}` : ""}
-                </s-heading>
-                {sizeChart.rows.length > 0 ? (
-                  <s-box
-                    padding="base"
-                    borderWidth="base"
-                    borderRadius="base"
-                    background="subdued"
-                  >
-                    <table
-                      style={{
-                        width: "100%",
-                        borderCollapse: "collapse",
-                        fontSize: "13px",
-                      }}
-                    >
-                      <thead>
-                        <tr>
-                          <th style={{ textAlign: "left", padding: "4px 8px" }}>
-                            サイズ
-                          </th>
-                          {measurementKeys.map((key) => (
-                            <th
-                              key={key}
-                              style={{ textAlign: "left", padding: "4px 8px" }}
-                            >
-                              {key}
-                            </th>
-                          ))}
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {sizeChart.rows.map((row, rowIdx) => (
-                          <tr key={`${row.size || "row"}-${rowIdx}`}>
-                            <td style={{ padding: "4px 8px" }}>
-                              {row.size || "—"}
-                            </td>
-                            {measurementKeys.map((key) => (
-                              <td key={key} style={{ padding: "4px 8px" }}>
-                                {row.measurements?.[key] ?? "—"}
-                              </td>
-                            ))}
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                    {sizeChart.notes?.length ? (
-                      <s-paragraph>{sizeChart.notes.join(" / ")}</s-paragraph>
-                    ) : null}
-                  </s-box>
-                ) : (
-                  <s-banner tone="warning">
-                    サイズ表を自動解析できませんでした。下の JSON
-                    で手動入力できます（後工程用・3D生成には使いません）。
-                  </s-banner>
-                )}
-
-                <s-heading>モデル身長・体型（メタフィールド）</s-heading>
-                {modelMeta &&
-                (modelMeta.heightCm != null ||
-                  modelMeta.weightKg != null ||
-                  modelMeta.sizeWorn) ? (
-                  <s-box
-                    padding="base"
-                    borderWidth="base"
-                    borderRadius="base"
-                    background="subdued"
-                  >
-                    <s-paragraph>
-                      身長: {modelMeta.heightCm ?? "—"} cm ／ 体重:{" "}
-                      {modelMeta.weightKg ?? "—"} kg ／ 着用サイズ:{" "}
-                      {modelMeta.sizeWorn ?? "—"}
-                      {modelMeta.bustCm != null
-                        ? ` ／ B ${modelMeta.bustCm}`
-                        : ""}
-                      {modelMeta.waistCm != null
-                        ? ` W ${modelMeta.waistCm}`
-                        : ""}
-                      {modelMeta.hipCm != null ? ` H ${modelMeta.hipCm}` : ""}
-                    </s-paragraph>
-                    {modelMeta.sourceKeys?.length ? (
-                      <s-paragraph>
-                        参照キー: {modelMeta.sourceKeys.join(", ")}
-                      </s-paragraph>
-                    ) : null}
-                  </s-box>
-                ) : (
-                  <s-paragraph>
-                    モデル身長・体型の抽出結果なし
-                    {modelMeta?.notes?.length
-                      ? `（${modelMeta.notes.join(" / ")}）`
-                      : ""}
-                  </s-paragraph>
-                )}
-
-                <s-heading>
-                  メタフィールド一覧（{metafields.length} 件
-                  {modelFields.length
-                    ? ` / モデル関連 ${modelFields.length}`
-                    : ""}
-                  ）
-                </s-heading>
-                <s-box
-                  padding="base"
-                  borderWidth="base"
-                  borderRadius="base"
-                  background="subdued"
-                >
-                  {metafields.length === 0 ? (
-                    <s-paragraph>メタフィールドなし</s-paragraph>
-                  ) : (
-                    <pre style={{ margin: 0, whiteSpace: "pre-wrap" }}>
-                      {JSON.stringify(
-                        (modelFields.length ? modelFields : metafields).slice(
-                          0,
-                          40,
-                        ),
-                        null,
-                        2,
-                      )}
-                    </pre>
-                  )}
-                </s-box>
-
-                <s-heading>手動編集（保存で不足フラグを再計算）</s-heading>
                 <Form method="post">
                   <input type="hidden" name="intent" value="save_edits" />
                   <input type="hidden" name="snapshotId" value={product.id} />
+                  <input
+                    type="hidden"
+                    name="sc_keys"
+                    value={measurementKeys.join(",")}
+                  />
+                  <input
+                    type="hidden"
+                    name="sc_row_count"
+                    value={String(editorRows.length)}
+                  />
+
                   <s-stack direction="block" gap="base">
+                    <s-heading>
+                      サイズ表（編集可）
+                      {sizeChart.source
+                        ? ` ／ 解析: ${formatSourceLabel(sizeChart.source)}`
+                        : ""}
+                    </s-heading>
+                    <s-paragraph>
+                      行＝サイズ、列＝寸法（肩幅・身幅・着丈など）。空欄は未入力です。保存すると不足フラグを再計算します。
+                    </s-paragraph>
+
+                    {sizeChart.rows.length === 0 ? (
+                      <s-banner tone="warning">
+                        サイズ表を自動解析できませんでした。下の表に手動入力できます（後工程用・3D生成には使いません）。
+                      </s-banner>
+                    ) : null}
+
+                    <s-box
+                      padding="base"
+                      borderWidth="base"
+                      borderRadius="base"
+                      background="subdued"
+                    >
+                      <label
+                        style={{
+                          display: "inline-flex",
+                          alignItems: "center",
+                          gap: "0.5rem",
+                          marginBottom: "0.75rem",
+                          fontSize: "13px",
+                        }}
+                      >
+                        単位
+                        <select
+                          name="sc_unit"
+                          defaultValue={sizeChart.unit || "cm"}
+                          style={cellInputStyle}
+                        >
+                          <option value="cm">cm</option>
+                          <option value="inch">inch</option>
+                          <option value="">未設定</option>
+                        </select>
+                      </label>
+
+                      <div style={{ overflowX: "auto" }}>
+                        <table style={tableStyle}>
+                          <thead>
+                            <tr>
+                              <th style={thStyle}>サイズ</th>
+                              {measurementKeys.map((key) => (
+                                <th key={key} style={thStyle}>
+                                  {measurementLabelJa(key)}
+                                  <span
+                                    style={{
+                                      display: "block",
+                                      fontWeight: 400,
+                                      color: "#6d7175",
+                                      fontSize: "11px",
+                                    }}
+                                  >
+                                    {key}
+                                  </span>
+                                </th>
+                              ))}
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {editorRows.map((row, rowIdx) => (
+                              <tr key={`${row.size || "row"}-${rowIdx}`}>
+                                <td style={tdStyle}>
+                                  <input
+                                    name={`sc_size_${rowIdx}`}
+                                    defaultValue={row.size || ""}
+                                    placeholder="S / M / L"
+                                    aria-label={`サイズ ${rowIdx + 1}`}
+                                    style={cellInputStyle}
+                                  />
+                                </td>
+                                {measurementKeys.map((key) => (
+                                  <td key={key} style={tdStyle}>
+                                    <input
+                                      name={`sc_m_${rowIdx}_${key}`}
+                                      defaultValue={
+                                        row.measurements?.[key] == null
+                                          ? ""
+                                          : String(row.measurements[key])
+                                      }
+                                      inputMode="decimal"
+                                      placeholder="—"
+                                      aria-label={`${row.size || `行${rowIdx + 1}`} ${measurementLabelJa(key)}`}
+                                      style={cellInputStyle}
+                                    />
+                                  </td>
+                                ))}
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
+                      {sizeChart.notes?.length ? (
+                        <s-paragraph>
+                          メモ: {sizeChart.notes.join(" / ")}
+                        </s-paragraph>
+                      ) : null}
+                    </s-box>
+
+                    <details
+                      style={{
+                        border: "1px solid #dfe3e8",
+                        borderRadius: "8px",
+                        padding: "0.75rem 1rem",
+                        background: "#fafbfb",
+                      }}
+                    >
+                      <summary style={{ cursor: "pointer", fontWeight: 600 }}>
+                        高度な編集（サイズ表 JSON・任意）
+                      </summary>
+                      <s-stack direction="block" gap="base">
+                        <s-paragraph>
+                          通常は上の表を編集してください。JSON
+                          を直接使う場合のみ、下にチェックを入れて保存します。
+                        </s-paragraph>
+                        <label
+                          style={{
+                            display: "inline-flex",
+                            alignItems: "center",
+                            gap: "0.5rem",
+                            fontSize: "13px",
+                          }}
+                        >
+                          <input
+                            type="checkbox"
+                            name="useSizeChartJson"
+                            value="1"
+                          />
+                          この JSON を表より優先して保存する
+                        </label>
+                        <s-text-area
+                          name="sizeChartOverride"
+                          label="サイズ表 JSON（{ unit, rows: [{ size, measurements }] }）"
+                          rows={8}
+                          defaultValue={advancedJsonDefault}
+                        />
+                      </s-stack>
+                    </details>
+
+                    <s-heading>モデル身長・体型</s-heading>
+                    <s-paragraph>
+                      メタフィールドから抽出した値です。不足があれば直接入力できます。
+                    </s-paragraph>
+                    <s-box
+                      padding="base"
+                      borderWidth="base"
+                      borderRadius="base"
+                      background="subdued"
+                    >
+                      <div
+                        style={{
+                          display: "grid",
+                          gridTemplateColumns:
+                            "repeat(auto-fit, minmax(140px, 1fr))",
+                          gap: "0.75rem",
+                        }}
+                      >
+                        <label style={{ fontSize: "13px" }}>
+                          身長 (cm)
+                          <input
+                            name="model_heightCm"
+                            defaultValue={
+                              model.heightCm == null ? "" : String(model.heightCm)
+                            }
+                            inputMode="decimal"
+                            placeholder="例: 165"
+                            style={{ ...cellInputStyle, marginTop: 4 }}
+                          />
+                        </label>
+                        <label style={{ fontSize: "13px" }}>
+                          体重 (kg)
+                          <input
+                            name="model_weightKg"
+                            defaultValue={
+                              model.weightKg == null ? "" : String(model.weightKg)
+                            }
+                            inputMode="decimal"
+                            placeholder="例: 48"
+                            style={{ ...cellInputStyle, marginTop: 4 }}
+                          />
+                        </label>
+                        <label style={{ fontSize: "13px" }}>
+                          バスト (cm)
+                          <input
+                            name="model_bustCm"
+                            defaultValue={
+                              model.bustCm == null ? "" : String(model.bustCm)
+                            }
+                            inputMode="decimal"
+                            style={{ ...cellInputStyle, marginTop: 4 }}
+                          />
+                        </label>
+                        <label style={{ fontSize: "13px" }}>
+                          ウエスト (cm)
+                          <input
+                            name="model_waistCm"
+                            defaultValue={
+                              model.waistCm == null ? "" : String(model.waistCm)
+                            }
+                            inputMode="decimal"
+                            style={{ ...cellInputStyle, marginTop: 4 }}
+                          />
+                        </label>
+                        <label style={{ fontSize: "13px" }}>
+                          ヒップ (cm)
+                          <input
+                            name="model_hipCm"
+                            defaultValue={
+                              model.hipCm == null ? "" : String(model.hipCm)
+                            }
+                            inputMode="decimal"
+                            style={{ ...cellInputStyle, marginTop: 4 }}
+                          />
+                        </label>
+                        <label style={{ fontSize: "13px" }}>
+                          着用サイズ
+                          <input
+                            name="model_sizeWorn"
+                            defaultValue={model.sizeWorn || ""}
+                            placeholder="例: M"
+                            style={{ ...cellInputStyle, marginTop: 4 }}
+                          />
+                        </label>
+                      </div>
+                      {model.sourceKeys?.length ? (
+                        <s-paragraph>
+                          参照キー: {model.sourceKeys.join(", ")}
+                        </s-paragraph>
+                      ) : null}
+                      {model.notes?.length ? (
+                        <s-paragraph>
+                          抽出メモ: {model.notes.join(" / ")}
+                        </s-paragraph>
+                      ) : null}
+                    </s-box>
+
+                    <s-heading>
+                      メタフィールド（{metafields.length} 件
+                      {modelRelated.length
+                        ? ` ／ モデル関連 ${modelRelated.length}`
+                        : ""}
+                      ）
+                    </s-heading>
+                    <s-box
+                      padding="base"
+                      borderWidth="base"
+                      borderRadius="base"
+                      background="subdued"
+                    >
+                      {metafieldRows.length === 0 ? (
+                        <s-paragraph>メタフィールドなし</s-paragraph>
+                      ) : (
+                        <div style={{ overflowX: "auto" }}>
+                          <table style={tableStyle}>
+                            <thead>
+                              <tr>
+                                <th style={thStyle}>名前空間.key</th>
+                                <th style={thStyle}>値</th>
+                                <th style={thStyle}>型</th>
+                              </tr>
+                            </thead>
+                            <tbody>
+                              {metafieldRows.map((mf, idx) => (
+                                <tr
+                                  key={`${mf.namespace}.${mf.key}.${idx}`}
+                                >
+                                  <td style={tdStyle}>
+                                    <code>
+                                      {mf.namespace}.{mf.key}
+                                    </code>
+                                    {mf.description ? (
+                                      <div
+                                        style={{
+                                          color: "#6d7175",
+                                          fontSize: "11px",
+                                        }}
+                                      >
+                                        {mf.description}
+                                      </div>
+                                    ) : null}
+                                  </td>
+                                  <td
+                                    style={{
+                                      ...tdStyle,
+                                      maxWidth: "28rem",
+                                      wordBreak: "break-word",
+                                    }}
+                                  >
+                                    {mf.value || "—"}
+                                  </td>
+                                  <td style={tdStyle}>{mf.type || "—"}</td>
+                                </tr>
+                              ))}
+                            </tbody>
+                          </table>
+                        </div>
+                      )}
+                      {metafields.length > metafieldRows.length ? (
+                        <s-paragraph>
+                          表示はモデル関連（または先頭 40
+                          件）に絞っています。全件は高度な JSON
+                          ではなく表で確認してください。
+                        </s-paragraph>
+                      ) : null}
+                    </s-box>
+
+                    <s-heading>レビューメモ</s-heading>
                     <s-text-area
                       name="reviewNotes"
                       label="レビューメモ"
@@ -434,15 +668,7 @@ export default function GenerationJobPage() {
                         manual.reviewNotes || product.reviewNotes || ""
                       }
                     />
-                    <s-text-area
-                      name="sizeChartOverride"
-                      label="サイズ表の手動補正（JSON: { unit, rows: [{ size, measurements }] }）"
-                      rows={10}
-                      defaultValue={defaultSizeChartEditorValue(
-                        sizeChart,
-                        manual.sizeChartOverride,
-                      )}
-                    />
+
                     <s-button type="submit" variant="secondary" disabled={busy}>
                       この商品の手動編集を保存
                     </s-button>
@@ -458,19 +684,38 @@ export default function GenerationJobPage() {
                       borderRadius="base"
                       background="subdued"
                     >
-                      <pre style={{ margin: 0, whiteSpace: "pre-wrap" }}>
-                        {JSON.stringify(
-                          product.assets.map((a) => ({
-                            id: a.id,
-                            kind: a.kind,
-                            sizeLabel: a.sizeLabel,
-                            storageUrl: a.storageUrl,
-                            mimeType: a.mimeType,
-                          })),
-                          null,
-                          2,
-                        )}
-                      </pre>
+                      <div style={{ overflowX: "auto" }}>
+                        <table style={tableStyle}>
+                          <thead>
+                            <tr>
+                              <th style={thStyle}>種別</th>
+                              <th style={thStyle}>サイズ</th>
+                              <th style={thStyle}>URL</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {product.assets.map((a) => (
+                              <tr key={a.id}>
+                                <td style={tdStyle}>{a.kind || "—"}</td>
+                                <td style={tdStyle}>{a.sizeLabel || "—"}</td>
+                                <td style={tdStyle}>
+                                  {a.storageUrl ? (
+                                    <a
+                                      href={a.storageUrl}
+                                      target="_blank"
+                                      rel="noreferrer"
+                                    >
+                                      {a.storageUrl}
+                                    </a>
+                                  ) : (
+                                    "—"
+                                  )}
+                                </td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
                     </s-box>
                   </>
                 ) : null}
@@ -535,28 +780,34 @@ export default function GenerationJobPage() {
 
         {job.engineRuns.length > 0 ? (
           <s-section heading="EngineRun ログ">
-            <s-box
-              padding="base"
-              borderWidth="base"
-              borderRadius="base"
-              background="subdued"
-            >
-              <pre style={{ margin: 0, whiteSpace: "pre-wrap" }}>
-                {JSON.stringify(
-                  job.engineRuns.map((r) => ({
-                    id: r.id,
-                    status: r.status,
-                    externalRunId: r.externalRunId,
-                    endpointId: r.endpointId,
-                    errorMessage: r.errorMessage,
-                    photoOnly: r.photoOnly,
-                    assetCount: r.assets?.length ?? 0,
-                  })),
-                  null,
-                  2,
-                )}
-              </pre>
-            </s-box>
+            <div style={{ overflowX: "auto" }}>
+              <table style={tableStyle}>
+                <thead>
+                  <tr>
+                    <th style={thStyle}>ステータス</th>
+                    <th style={thStyle}>外部 Run ID</th>
+                    <th style={thStyle}>Endpoint</th>
+                    <th style={thStyle}>写真のみ</th>
+                    <th style={thStyle}>Asset数</th>
+                    <th style={thStyle}>エラー</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {job.engineRuns.map((r) => (
+                    <tr key={r.id}>
+                      <td style={tdStyle}>{r.status}</td>
+                      <td style={tdStyle}>
+                        <code>{r.externalRunId || "—"}</code>
+                      </td>
+                      <td style={tdStyle}>{r.endpointId || "—"}</td>
+                      <td style={tdStyle}>{r.photoOnly ? "はい" : "いいえ"}</td>
+                      <td style={tdStyle}>{r.assets?.length ?? 0}</td>
+                      <td style={tdStyle}>{r.errorMessage || "—"}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
           </s-section>
         ) : null}
       </s-stack>
