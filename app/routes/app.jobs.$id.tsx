@@ -9,9 +9,13 @@ import { authenticate } from "../shopify.server";
 import {
   confirmAndStartGeneration,
   getGenerationJob,
+  pollAndSyncEngineRuns,
   updateProductManualEdits,
 } from "../services/jobs.server";
-import { isRunPodMockMode } from "../services/runpod.server";
+import {
+  getRunPodPublicConfig,
+  isRunPodMockMode,
+} from "../services/runpod.server";
 
 export const loader = async ({ request, params }: LoaderFunctionArgs) => {
   await authenticate.admin(request);
@@ -23,6 +27,7 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
   return {
     job,
     runpodMock: isRunPodMockMode(),
+    runpod: getRunPodPublicConfig(),
   };
 };
 
@@ -53,6 +58,18 @@ export const action = async ({ request, params }: ActionFunctionArgs) => {
     };
   }
 
+  if (intent === "poll_status") {
+    const result = await pollAndSyncEngineRuns(params.id!);
+    return {
+      ok: true,
+      intent: "poll_status" as const,
+      mock: result.mock,
+      jobStatus: result.job.status,
+      updateCount: result.updates.length,
+      updates: result.updates,
+    };
+  }
+
   return { ok: false, intent: "unknown" as const };
 };
 
@@ -65,22 +82,47 @@ function safeJson(raw: string) {
 }
 
 export default function GenerationJobPage() {
-  const { job, runpodMock } = useLoaderData<typeof loader>();
+  const { job, runpodMock, runpod } = useLoaderData<typeof loader>();
   const actionData = useActionData<typeof action>();
   const navigation = useNavigation();
   const busy = navigation.state !== "idle";
+  const canStart = job.status === "review" || job.status === "collecting";
+  const canPoll =
+    job.status === "generating" ||
+    job.engineRuns.some((r) =>
+      ["queued", "submitted", "running", "succeeded"].includes(r.status),
+    );
 
   return (
     <s-page heading={job.title || `ジョブ ${job.id}`}>
       <s-stack direction="block" gap="base">
         <s-banner tone={job.status === "failed" ? "critical" : "info"}>
           ステータス: <s-text type="strong">{job.status}</s-text>
-          {runpodMock ? " ／ RunPod: モックモード（APIキー未設定）" : " ／ RunPod: ライブ設定あり"}
+          {runpodMock
+            ? " ／ RunPod: モックモード（APIキー未設定）"
+            : " ／ RunPod: ライブ設定あり"}
+          {runpod.endpointIdConfigured
+            ? ""
+            : " ／ ENDPOINT_ID 未設定"}
         </s-banner>
 
-        {actionData && "intent" in actionData && actionData.intent === "confirm_start" && actionData.ok ? (
+        {actionData &&
+        "intent" in actionData &&
+        actionData.intent === "confirm_start" &&
+        actionData.ok ? (
           <s-banner tone="success">
             作成を開始しました（engine runs: {actionData.runCount}
+            {actionData.mock ? ", mock" : ""}）—「状態を更新」でポーリングできます
+          </s-banner>
+        ) : null}
+
+        {actionData &&
+        "intent" in actionData &&
+        actionData.intent === "poll_status" &&
+        actionData.ok ? (
+          <s-banner tone="success">
+            状態を同期しました → job: {actionData.jobStatus}（updates:{" "}
+            {actionData.updateCount}
             {actionData.mock ? ", mock" : ""}）
           </s-banner>
         ) : null}
@@ -200,27 +242,66 @@ export default function GenerationJobPage() {
                     </s-button>
                   </s-stack>
                 </Form>
+
+                {product.assets?.length ? (
+                  <>
+                    <s-heading>Asset3D</s-heading>
+                    <s-box
+                      padding="base"
+                      borderWidth="base"
+                      borderRadius="base"
+                      background="subdued"
+                    >
+                      <pre style={{ margin: 0, whiteSpace: "pre-wrap" }}>
+                        {JSON.stringify(
+                          product.assets.map((a) => ({
+                            id: a.id,
+                            kind: a.kind,
+                            sizeLabel: a.sizeLabel,
+                            storageUrl: a.storageUrl,
+                            mimeType: a.mimeType,
+                          })),
+                          null,
+                          2,
+                        )}
+                      </pre>
+                    </s-box>
+                  </>
+                ) : null}
               </s-stack>
             </s-section>
           );
         })}
 
         <s-section heading="作成開始">
-          <Form method="post">
-            <input type="hidden" name="intent" value="confirm_start" />
-            <s-stack direction="block" gap="base">
-              <s-paragraph>
-                確認後、RunPod へ写真のみの生成ジョブを投入します（TRELLIS / ComfyUI ワークフローはスタブ）。
-              </s-paragraph>
+          <s-stack direction="block" gap="base">
+            <s-paragraph>
+              確認後、RunPod へ写真のみの生成ジョブを投入します。ComfyUI /
+              TRELLIS.2 ワークフロー JSON は{" "}
+              <code>config/runpod-trellis-workflow.json</code>{" "}
+             （または env）で編集できます。
+            </s-paragraph>
+            <Form method="post">
+              <input type="hidden" name="intent" value="confirm_start" />
               <s-button
                 type="submit"
                 variant="primary"
-                disabled={busy || job.status === "generating"}
+                disabled={busy || !canStart}
               >
                 確認して作成開始
               </s-button>
-            </s-stack>
-          </Form>
+            </Form>
+            <Form method="post">
+              <input type="hidden" name="intent" value="poll_status" />
+              <s-button
+                type="submit"
+                variant="secondary"
+                disabled={busy || !canPoll}
+              >
+                状態を更新（RunPod ポーリング）
+              </s-button>
+            </Form>
+          </s-stack>
         </s-section>
 
         {job.engineRuns.length > 0 ? (
@@ -237,8 +318,10 @@ export default function GenerationJobPage() {
                     id: r.id,
                     status: r.status,
                     externalRunId: r.externalRunId,
+                    endpointId: r.endpointId,
                     errorMessage: r.errorMessage,
                     photoOnly: r.photoOnly,
+                    assetCount: r.assets?.length ?? 0,
                   })),
                   null,
                   2,

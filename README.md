@@ -11,7 +11,7 @@ Shopify アパレル EC 向けの **3D 着用確認アプリ**（埋め込み Ad
 | Shopify アプリ | React Router（旧 Remix 系公式テンプレート）+ Polaris Web Components |
 | 起動導線 | 商品一覧 ⋯ → アプリ →「**3D作成**」（Admin Link）→ `/app/jobs/new` |
 | データ | Prisma + SQLite（MVP）— `Shop` / `GenerationJob` / `ProductSnapshot` / `Asset3D` / `EngineRun` |
-| 3D エンジン | RunPod 上の ComfyUI + TRELLIS.2（クライアントはスタブ + モック／ライブ切替） |
+| 3D エンジン | RunPod Serverless 上の ComfyUI + TRELLIS.2（モック／ライブ切替・ポーリング・Asset3D スタブ） |
 
 ### フロー
 
@@ -47,8 +47,11 @@ shopify app dev
 | `SCOPES` | 例: `write_products,read_products` |
 | `SHOPIFY_APP_URL` | アプリ URL（`shopify app dev` がトンネルを設定） |
 | `RUNPOD_API_KEY` | 未設定時は **モックモード** |
-| `RUNPOD_ENDPOINT_ID` | RunPod Serverless エンドポイント ID |
+| `RUNPOD_ENDPOINT_ID` | **新規** ComfyUI+TRELLIS.2 Endpoint の ID（別プロジェクトの既存 Endpoint は使わない） |
 | `RUNPOD_API_BASE` | 省略時 `https://api.runpod.ai/v2` |
+| `RUNPOD_WORKFLOW_PATH` / `RUNPOD_WORKFLOW_JSON` | ComfyUI グラフ JSON（省略時 `config/runpod-trellis-workflow.json`） |
+
+セットアップ手順の詳細はプロジェクト Context の `docs/runpod-setup.md` を参照。ローカル確認: `npm run smoke:runpod`。
 
 ## 主なパス
 
@@ -61,8 +64,9 @@ shopify app dev
 
 ## 現状と次のステップ
 
-- Phase 0 / Phase 1 開始: スキャフォールド、拡張、ジョブ画面スケルトン、Prisma、RunPod クライアント骨組み
-- 未着手: 本格サイズ表テーブルパーサ、ComfyUI ワークフロー配線、アセットストレージ、ストアフロント試着
+- Phase 0–2 相当: スキャフォールド、Admin Link、Job レビュー、「作成開始」+ RunPod submit/poll、Asset3D URL スタブ
+- 要ユーザー設定: `RUNPOD_API_KEY` + 正しい ComfyUI/TRELLIS の `RUNPOD_ENDPOINT_ID`
+- 未着手: 本格サイズ表パーサ、実 Comfy グラフ本番化、オブジェクトストレージ、ストアフロント試着
 
 ## ライセンス
 
