@@ -616,7 +616,8 @@ export function getJobStartBlockers(
   for (const p of products) {
     let flags: string[] = [];
     try {
-      flags = JSON.parse(p.missingFlagsJson) as string[];
+      const parsed = JSON.parse(p.missingFlagsJson) as unknown;
+      flags = Array.isArray(parsed) ? (parsed as string[]) : [];
     } catch {
       flags = [];
     }

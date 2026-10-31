@@ -5,46 +5,25 @@
  */
 
 import {
+  MISSING_FLAG_LABELS,
+  type CollectedImage,
+  type CollectedMetafield,
+  type MissingFlag,
+  type ModelBodyMeta,
+} from "../lib/product-review";
+import {
   normalizeManualSizeChart,
   parseSizeChart,
   type SizeChartParseResult,
 } from "./size-chart.server";
 
-export type CollectedImage = {
-  id: string;
-  url: string;
-  altText: string | null;
-  position: number;
-  source: "media" | "images";
-  width?: number | null;
-  height?: number | null;
-};
-
-export type CollectedMetafield = {
-  namespace: string;
-  key: string;
-  type: string;
-  value: string;
-  description?: string | null;
-};
-
-export type ModelBodyMeta = {
-  heightCm: number | null;
-  weightKg: number | null;
-  bustCm: number | null;
-  waistCm: number | null;
-  hipCm: number | null;
-  sizeWorn: string | null;
-  notes: string[];
-  sourceKeys: string[];
-};
-
-export type MissingFlag =
-  | "images"
-  | "size_chart"
-  | "model_meta"
-  | "product_not_found"
-  | "description";
+export type {
+  CollectedImage,
+  CollectedMetafield,
+  MissingFlag,
+  ModelBodyMeta,
+} from "../lib/product-review";
+export { MISSING_FLAG_LABELS } from "../lib/product-review";
 
 export const PRODUCT_NODES_QUERY = `#graphql
   query ProductNodes($ids: [ID!]!) {
@@ -394,14 +373,6 @@ export type EffectiveProductReview = {
   missingLabels: Record<MissingFlag, string>;
 };
 
-export const MISSING_FLAG_LABELS: Record<MissingFlag, string> = {
-  images: "写真なし（3D生成に必須）",
-  size_chart: "サイズ表未解析（後工程のサイズ展開用・手動入力可）",
-  model_meta: "モデル身長・体型メタなし（任意）",
-  product_not_found: "商品が Admin API で見つかりませんでした",
-  description: "商品説明が空です",
-};
-
 /**
  * Compute missing flags for a product snapshot (photos required for 3D).
  */
@@ -530,13 +501,15 @@ export function productsMissingImages(
   for (const p of products) {
     let images: unknown[] = [];
     try {
-      images = JSON.parse(p.imagesJson) as unknown[];
+      const parsed = JSON.parse(p.imagesJson) as unknown;
+      images = Array.isArray(parsed) ? parsed : [];
     } catch {
       images = [];
     }
     let flags: string[] = [];
     try {
-      flags = JSON.parse(p.missingFlagsJson) as string[];
+      const parsed = JSON.parse(p.missingFlagsJson) as unknown;
+      flags = Array.isArray(parsed) ? (parsed as string[]) : [];
     } catch {
       flags = [];
     }
