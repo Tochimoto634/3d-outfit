@@ -136,6 +136,8 @@
     controls.target.set(0, 0.95, 0);
     controls.autoRotate = false;
     controls.enablePan = false;
+    // No wheel / pinch zoom — yaw drag only.
+    controls.enableZoom = false;
     controls.minDistance = 1.2;
     controls.maxDistance = 6;
     // Yaw / horizontal 360 only — lock polar angle at front-fixed height.
@@ -143,6 +145,15 @@
     var lockedPolar = controls.getPolarAngle();
     controls.minPolarAngle = lockedPolar;
     controls.maxPolarAngle = lockedPolar;
+
+    // Belt-and-suspenders: block wheel zoom gestures on the canvas.
+    canvas.addEventListener(
+      "wheel",
+      function (ev) {
+        ev.preventDefault();
+      },
+      { passive: false },
+    );
 
     function setOrbitEnabled(enabled) {
       controls.enabled = !!enabled;
@@ -165,9 +176,15 @@
       getPolar: function () {
         return controls.getPolarAngle();
       },
+      getDistance: function () {
+        return controls.getDistance();
+      },
       setEnabled: setOrbitEnabled,
       isEnabled: function () {
         return !!controls.enabled;
+      },
+      zoomEnabled: function () {
+        return !!controls.enableZoom;
       },
     };
 
@@ -178,9 +195,9 @@
       controls.maxPolarAngle = lockedPolar;
     }
 
-    // SSENSE-like seamless studio: neutral off-white, soft even light,
-    // minimal contact shadow only (no beige stage disc / warm fill).
-    var studioBg = 0xf2f2f2;
+    // SSENSE-like seamless studio: near-white (not grey #f2f2f2), soft even
+    // light, minimal contact shadow only (no beige stage disc / warm fill).
+    var studioBg = 0xfafafa;
     scene.background = new THREE.Color(studioBg);
     renderer.setClearColor(studioBg, 1);
 

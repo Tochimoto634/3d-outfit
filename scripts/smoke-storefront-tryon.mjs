@@ -112,9 +112,13 @@ assert.match(tryOnJs, /outfit:tryon:boot|outfit:tryon:ready/);
 assert.match(tryOnJs, /minPolarAngle/);
 assert.match(tryOnJs, /maxPolarAngle/);
 assert.match(tryOnJs, /enableDamping\s*=\s*false/);
-assert.match(tryOnJs, /0xf2f2f2|studioBg|contactShadow/);
+assert.match(tryOnJs, /enableZoom\s*=\s*false/);
+assert.match(tryOnJs, /0xfafafa|studioBg|contactShadow/);
+assert.doesNotMatch(tryOnJs, /0xf2f2f2/);
 assert.doesNotMatch(tryOnJs, /toggleAutoRotate|autoRotate\s*=\s*true/);
 assert.doesNotMatch(tryOnJs, /enableDamping\s*=\s*true/);
+assert.doesNotMatch(tryOnJs, /enableZoom\s*=\s*true/);
+assert.match(tryOnCss, /#fafafa/);
 
 assert.match(galleryJs, /data-tryon-drawer/);
 assert.match(galleryJs, /shieldInteractive|stopPropagation/);
@@ -142,7 +146,8 @@ console.log("smoke:storefront-tryon OK", {
   galleryEmbed: true,
   yawOnlyOrbit: true,
   noDamping: true,
-  ssenseStudio: true,
+  noZoom: true,
+  ssenseStudioWhite: true,
   drawerInputShield: true,
   orbitCanvasShield: true,
 });
