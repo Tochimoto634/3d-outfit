@@ -123,11 +123,15 @@
     </div>
   </template>
 
-  {% comment %} v18 — fetch+Blob MakeHuman body-data from Shopify CDN {% endcomment %}
-  <script src="{{ 'body-male-data.js' | asset_url | append: '&v=18mh' }}" defer></script>
-  <script src="{{ 'body-female-data.js' | asset_url | append: '&v=18mh' }}" defer></script>
-  <script src="{{ 'try-on.js' | asset_url | append: '&v=18mh' }}" defer></script>
-  <script src="{{ 'gallery-tryon.js' | asset_url | append: '&v=18mh' }}" defer></script>
+  {% comment %}
+    STABLE embed UUID for Helio (do NOT retarget in settings_data):
+    shopify://apps/3d-outfit/blocks/gallery-tryon-embed/01a194ff-7275-7ff3-bee8-460c38000fea
+    v19 — fetch+parse body-data (no eval); Blob GLTF; product always pre-create
+  {% endcomment %}
+  <script src="{{ 'body-male-data.js' | asset_url | append: '&v=19rca' }}" defer></script>
+  <script src="{{ 'body-female-data.js' | asset_url | append: '&v=19rca' }}" defer></script>
+  <script src="{{ 'try-on.js' | asset_url | append: '&v=19rca' }}" defer></script>
+  <script src="{{ 'gallery-tryon.js' | asset_url | append: '&v=19rca' }}" defer></script>
 {% endif %}
 
 {% schema %}

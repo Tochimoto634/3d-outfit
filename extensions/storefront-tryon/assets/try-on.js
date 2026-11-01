@@ -298,11 +298,11 @@
     var bodyGlbCache = Object.create(null);
     var bodyLoadToken = 0;
     // Cache-bust + version marker — must appear in live status / data attrs.
-    var OUTFIT_BODY_ASSET_V = "18";
+    var OUTFIT_BODY_ASSET_V = "19";
     var BODY_CDN_MALE =
-      "https://cdn.jsdelivr.net/gh/Tochimoto634/3d-outfit@449b1d1/public/tryon/bodies/body-male.glb";
+      "https://cdn.jsdelivr.net/gh/Tochimoto634/3d-outfit@32c807b/public/tryon/bodies/body-male.glb";
     var BODY_CDN_FEMALE =
-      "https://cdn.jsdelivr.net/gh/Tochimoto634/3d-outfit@449b1d1/public/tryon/bodies/body-female.glb";
+      "https://cdn.jsdelivr.net/gh/Tochimoto634/3d-outfit@32c807b/public/tryon/bodies/body-female.glb";
     var bodyDataReady = null;
     // Capsule only after MakeHuman fails — never silent (status always names it).
     var ALLOW_CAPSULE_FALLBACK = true;
@@ -351,9 +351,24 @@
     }
 
     /**
-     * fetch() body-*-data.js from Shopify extension CDN (same origin as
-     * try-on.js → CSP-safe), then eval to set window.__OutfitBody*Glb.
-     * More reliable than <script defer> on Helio.
+     * Parse body-*-data.js WITHOUT eval (Shopify CSP blocks unsafe-eval).
+     * File shape: (function(w){w.__OutfitBodyMaleGlb="data:...";})(...)
+     */
+    function applyBodyDataText(text, marker) {
+      if (!text || !marker) return false;
+      var re = new RegExp(
+        marker.replace(/[.*+?^${}()|[\]\\]/g, "\\$&") +
+          '\\s*=\\s*"(data:[^"]*)"',
+      );
+      var m = text.match(re);
+      if (!m || !m[1]) return false;
+      window[marker] = m[1];
+      return true;
+    }
+
+    /**
+     * fetch() body-*-data.js from Shopify extension CDN (same base as
+     * try-on.js → CSP-safe). Prefer over <script defer>.
      */
     function fetchBodyDataFile(url, marker) {
       return new Promise(function (resolve) {
@@ -373,23 +388,13 @@
               return null;
             }
             return res.text().then(function (text) {
-              try {
-                // body-*-data.js is an IIFE assigning window.__OutfitBody*Glb
-                (0, eval)(text);
-              } catch (errEval) {
-                resolve({
-                  ok: false,
-                  status: res.status,
-                  url: url,
-                  evalError: String(errEval && errEval.message),
-                });
-                return;
-              }
+              var ok = applyBodyDataText(text, marker);
               resolve({
-                ok: !!(marker ? window[marker] : true),
+                ok: ok,
                 status: res.status,
                 url: url,
                 bytes: text.length,
+                parseOk: ok,
               });
             });
           })
@@ -1046,20 +1051,39 @@
        * Gallery idle: product only (no body) until the user creates a mannequin.
        */
       showProductOnlyPreview: function () {
-        var p = buildProportions({
-          heightCm: 170,
-          weightKg: 60,
-          gender: "unspecified",
-        });
-        clearMannequin();
-        addClothProxy(p);
-        mannequinGroup.visible = false;
-        garmentGroup.visible = true;
-        syncLayerButtons();
-        this.hideOverlay();
-        resizeWhenVisible();
-        fitVisibleContent();
-        this.setStatus("商品プレビュー（人体モデルは設定から作成）");
+        try {
+          var p = buildProportions({
+            heightCm: 170,
+            weightKg: 60,
+            gender: "unspecified",
+          });
+          clearMannequin();
+          addClothProxy(p);
+          mannequinGroup.visible = false;
+          garmentGroup.visible = true;
+          syncLayerButtons();
+          this.hideOverlay();
+          resizeWhenVisible();
+          fitVisibleContent();
+          this.setStatus(
+            "商品プレビュー（人体モデルは設定から作成） [tryon v" +
+              OUTFIT_BODY_ASSET_V +
+              "]",
+          );
+        } catch (errProd) {
+          try {
+            garmentGroup.visible = true;
+            this.hideOverlay();
+            this.setStatus(
+              "商品プレビュー初期化エラー [tryon v" +
+                OUTFIT_BODY_ASSET_V +
+                "]: " +
+                String((errProd && errProd.message) || errProd),
+            );
+          } catch (err2) {
+            /* ignore */
+          }
+        }
       },
       setLayerVisible: setLayerVisible,
       syncLayerButtons: syncLayerButtons,
