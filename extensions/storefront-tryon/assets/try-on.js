@@ -127,21 +127,21 @@
 
     var scene = new THREE.Scene();
     var camera = new THREE.PerspectiveCamera(35, 1, 0.05, 50);
-    // ~150% subject scale + closer framing (upper body centered).
-    var CONTENT_SCALE = 1.5;
-    camera.position.set(0, 1.35, 2.15);
+    // Auto-fit visible content to ~75% of the viewport (no fixed 150% scale).
+    var FIT_FILL = 0.75;
+    camera.position.set(0, 1.1, 2.8);
 
     var controls = new OrbitControls(camera, canvas);
     // Instant stop on release — no post-drag inertia/coasting.
     controls.enableDamping = false;
     controls.dampingFactor = 0;
-    controls.target.set(0, 1.35, 0);
+    controls.target.set(0, 1.1, 0);
     controls.autoRotate = false;
     controls.enablePan = false;
     // No wheel / pinch zoom — yaw drag only.
     controls.enableZoom = false;
-    controls.minDistance = 0.9;
-    controls.maxDistance = 5;
+    controls.minDistance = 0.6;
+    controls.maxDistance = 8;
     // Yaw / horizontal 360 only — lock polar angle at front-fixed height.
     controls.update();
     var lockedPolar = controls.getPolarAngle();
@@ -238,7 +238,6 @@
     contactShadow.position.y = 0.001;
 
     var turntable = new THREE.Group();
-    turntable.scale.setScalar(CONTENT_SCALE);
     scene.add(turntable);
     turntable.add(contactShadow);
     var mannequinGroup = new THREE.Group();
@@ -246,7 +245,6 @@
     turntable.add(mannequinGroup);
     turntable.add(garmentGroup);
 
-    var isGallery = root.hasAttribute("data-outfit-gallery-slide");
     var bodyBtn = root.querySelector('[data-tryon-layer="body"]');
     var productBtn = root.querySelector('[data-tryon-layer="product"]');
 
@@ -267,6 +265,7 @@
       if (layer === "body") mannequinGroup.visible = !!visible;
       if (layer === "product") garmentGroup.visible = !!visible;
       syncLayerButtons();
+      fitVisibleContent();
     }
 
     function wireLayerToggles() {
@@ -387,23 +386,62 @@
         mannequinGroup.add(calf);
       });
 
-      frameUpperBody(p);
+      fitVisibleContent();
     }
 
-    /** Frame so the upper body sits near vertical center; keep current yaw. */
-    function frameUpperBody(p) {
-      var legH = p.legLength;
-      var torsoH = p.torsoLength;
-      var s = p.overallScale || 1;
-      // Chest / upper-torso in world Y (turntable is scaled).
-      var chestY = (legH + torsoH * 0.78) * CONTENT_SCALE;
-      var dist = (1.55 + s * 0.25) / Math.max(CONTENT_SCALE * 0.72, 1);
+    /**
+     * Auto-frame currently visible meshes so they fill ~FIT_FILL of the
+     * viewport. Prefer a slightly upper-body look-at when the body is shown.
+     */
+    function fitVisibleContent() {
+      turntable.updateMatrixWorld(true);
+      var box = new THREE.Box3();
+      var has = false;
+      if (mannequinGroup.visible && mannequinGroup.children.length) {
+        box.expandByObject(mannequinGroup);
+        has = true;
+      }
+      if (garmentGroup.visible && garmentGroup.children.length) {
+        box.expandByObject(garmentGroup);
+        has = true;
+      }
+      if (!has || box.isEmpty()) return;
+
+      var size = new THREE.Vector3();
+      var center = new THREE.Vector3();
+      box.getSize(size);
+      box.getCenter(center);
+      if (!(size.x > 0) || !(size.y > 0)) return;
+
+      var bodyOn = mannequinGroup.visible && mannequinGroup.children.length > 0;
+      // When body is shown, fit the upper ~72% (mid-thigh→head) so framing
+      // reads upper-body-ish while the subject fills ~75% of the viewport.
+      if (bodyOn) {
+        var fullH = size.y;
+        box.min.y = box.min.y + fullH * 0.28;
+        box.getSize(size);
+        box.getCenter(center);
+      }
+
+      // Keep look-at near box center (slight lift) so fill math matches framing.
+      var targetY = center.y + size.y * 0.04;
+
+      var vFov = (camera.fov * Math.PI) / 180;
+      var aspect = Math.max(camera.aspect || 1, 0.01);
+      var hFov = 2 * Math.atan(Math.tan(vFov / 2) * aspect);
+      var fill = FIT_FILL;
+      var distH = size.y / (2 * fill * Math.tan(vFov / 2));
+      var distW = size.x / (2 * fill * Math.tan(hFov / 2));
+      var distD = Math.max(size.z, 0.01) / (2 * fill * Math.tan(hFov / 2));
+      // Fit-inside: dominant axis ≈ 75% of viewport (no edge-to-edge overflow).
+      var dist = Math.max(distH, distW, distD, 0.85);
+
       var yaw = controls.getAzimuthalAngle();
-      controls.target.set(0, chestY, 0);
+      controls.target.set(center.x, targetY, center.z);
       camera.position.set(
-        Math.sin(yaw) * dist,
-        chestY,
-        Math.cos(yaw) * dist,
+        center.x + Math.sin(yaw) * dist,
+        targetY,
+        center.z + Math.cos(yaw) * dist,
       );
       lockOrbitHeight();
     }
@@ -620,8 +658,8 @@
             "実 GLB が無いため布プロキシで試着プレビューしています（TRELLIS 未接続）。",
           );
         }
-        frameUpperBody(p);
         resizeWhenVisible();
+        fitVisibleContent();
       },
       /**
        * Gallery idle: product only (no body) until the user creates a mannequin.
@@ -641,19 +679,17 @@
         garmentGroup.visible = true;
         syncLayerButtons();
         this.hideOverlay();
-        // Frame on garment torso center (no body yet).
-        var shirtY = (p.legLength + p.torsoLength * 0.55) * CONTENT_SCALE;
-        var dist = (1.55 + p.overallScale * 0.25) / Math.max(CONTENT_SCALE * 0.72, 1);
-        var yaw = controls.getAzimuthalAngle();
-        controls.target.set(0, shirtY, 0);
-        camera.position.set(Math.sin(yaw) * dist, shirtY, Math.cos(yaw) * dist);
-        lockOrbitHeight();
-        this.setStatus("商品プレビュー（人体モデルは設定から作成）");
         resizeWhenVisible();
+        fitVisibleContent();
+        this.setStatus("商品プレビュー（人体モデルは設定から作成）");
       },
       setLayerVisible: setLayerVisible,
       syncLayerButtons: syncLayerButtons,
-      resize: resizeWhenVisible,
+      fitVisibleContent: fitVisibleContent,
+      resize: function () {
+        resizeWhenVisible();
+        fitVisibleContent();
+      },
       dispose: function () {
         cancelAnimationFrame(raf);
         window.removeEventListener("resize", resizeWhenVisible);

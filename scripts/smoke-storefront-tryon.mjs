@@ -137,7 +137,9 @@ assert.doesNotMatch(galleryEmbed, /outfit-tryon__gallery-badge|aria-hidden="true
 assert.doesNotMatch(galleryEmbed, /自動回転|auto_rotate|data-tryon-toggle-rotate/);
 assert.match(tryOnCss, /outfit-tryon__drawer/);
 assert.match(tryOnCss, /outfit-tryon__layer-btn/);
-assert.match(tryOnJs, /CONTENT_SCALE\s*=\s*1\.5|showProductOnlyPreview|setLayerVisible/);
+assert.match(tryOnJs, /FIT_FILL\s*=\s*0\.75|fitVisibleContent/);
+assert.match(tryOnJs, /showProductOnlyPreview|setLayerVisible/);
+assert.doesNotMatch(tryOnJs, /CONTENT_SCALE\s*=\s*1\.5/);
 assert.match(tryOnCss, /is-drawer-open/);
 assert.match(tryOnCss, /touch-action:\s*none/);
 assert.doesNotMatch(
@@ -160,7 +162,7 @@ console.log("smoke:storefront-tryon OK", {
   ssenseStudioWhite: true,
   localFirstCreate: true,
   layerToggles: true,
-  contentScale150: true,
+  fitFill75: true,
   drawerInputShield: true,
   orbitCanvasShield: true,
 });
