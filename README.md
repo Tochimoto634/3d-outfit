@@ -19,7 +19,7 @@ Shopify アパレル EC 向けの **3D 着用確認アプリ**（埋め込み Ad
 2. アプリが Admin API で画像・説明文・メタフィールドを収集し、サイズ表をヒューリスティック解析（スタブ）
 3. 運営者が確認・手動補正のうえ「確認して作成開始」
 4. RunPod へ **写真のみ** の生成ジョブを投入（この段階ではサイズ表は使わない）
-5. （後続）ベースモデル完成後に S/M/L 展開・ストアフロント試着 UI
+5. ストアフロント Theme App Block「3D試着」で体型入力 → マネキン → 360° 試着（GLB が無ければ布プロキシ）
 
 ## ローカル起動
 
@@ -61,12 +61,16 @@ shopify app dev
 - `/app/jobs/:id` — レビュー UI と「確認して作成開始」
 - `extensions/product-3d-create-link` — Admin Link（商品一覧の選択メニュー「3D作成」）
 - `extensions/product-3d-details-link` — Admin Link（商品詳細のその他のアクション）
+- `extensions/storefront-tryon` — Theme App Extension（商品ページ「3D試着」App Block）
+- `/api/storefront/tryon` — CORS 試着 API（開発用）
+- `/api/proxy/tryon` — App Proxy（ストア `/apps/3d-outfit/tryon`）
 
 ## 現状と次のステップ
 
 - Phase 0–2 相当: スキャフォールド、Admin Link、Job レビュー、「作成開始」+ RunPod submit/poll、Asset3D URL スタブ
+- Phase 5 MVP: ストアフロント試着（パラメトリックマネキン + 布プロキシ / GLB・360°）
 - 要ユーザー設定: `RUNPOD_API_KEY` + 正しい ComfyUI/TRELLIS の `RUNPOD_ENDPOINT_ID`
-- 未着手: 本格サイズ表パーサ、実 Comfy グラフ本番化、オブジェクトストレージ、ストアフロント試着
+- 未着手: 本格サイズ表パーサ、実 Comfy グラフ本番化、オブジェクトストレージ、実 TRELLIS 着装
 
 ## ライセンス
 

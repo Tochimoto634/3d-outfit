@@ -1,0 +1,11 @@
+{
+  "3D試着ビューア": "3D try-on viewer",
+  "見出し": "Heading",
+  "説明文": "Description",
+  "API ベース URL（任意・開発用）": "API base URL (optional, for development)",
+  "空欄なら App Proxy (/apps/3d-outfit/tryon) を使います。shopify app dev のアプリ URL を入れると CORS API 経由でも取得できます。": "Leave blank to use App Proxy (/apps/3d-outfit/tryon). Set the shopify app dev URL to use the CORS API.",
+  "初期状態で自動回転": "Auto-rotate by default",
+  "布プロキシの色": "Cloth proxy color",
+  "初期身長 (cm)": "Default height (cm)",
+  "初期体重 (kg)": "Default weight (kg)"
+}

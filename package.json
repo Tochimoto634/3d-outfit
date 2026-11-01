@@ -21,7 +21,8 @@
     "smoke:runpod": "tsx scripts/smoke-runpod.mjs",
     "smoke:size-chart": "node scripts/smoke-size-chart.mjs",
     "smoke:model-photo": "node scripts/smoke-model-photo.mjs",
-    "smoke:create-button": "tsx scripts/smoke-create-button-state.mjs"
+    "smoke:create-button": "tsx scripts/smoke-create-button-state.mjs",
+    "smoke:storefront-tryon": "tsx scripts/smoke-storefront-tryon.mjs"
   },
   "type": "module",
   "engines": {
