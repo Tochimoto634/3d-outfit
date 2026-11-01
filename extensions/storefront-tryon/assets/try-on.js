@@ -36,11 +36,106 @@
     return Math.min(max, Math.max(min, n));
   }
 
+  /** TO-43 body category → coarse relative biases. 「普通」= 1.0 baseline. */
+  function pickCat(raw, allowed, fallback) {
+    var v = String(raw || "").trim() || fallback;
+    return allowed.indexOf(v) >= 0 ? v : fallback;
+  }
+
+  function normalizeBodyCats(raw, gender) {
+    var src = raw && typeof raw === "object" ? raw : {};
+    var muscle = pickCat(src.muscle, ["normal", "slim", "toned", "muscular"], "normal");
+    var legLength = pickCat(src.legLength, ["normal", "short", "long"], "normal");
+    var shoulder = pickCat(src.shoulder, ["normal", "narrow", "wide"], "normal");
+    var waist = pickCat(src.waist, ["normal", "slim", "thick"], "normal");
+    var hip = pickCat(src.hip, ["normal", "narrow", "wide"], "normal");
+    var cup = null;
+    var chestThickness = null;
+    if (gender === "female") {
+      cup = pickCat(src.cup, ["normal", "a", "b", "c", "d", "e_plus"], "normal");
+    } else if (gender === "male") {
+      chestThickness = pickCat(
+        src.chestThickness,
+        ["normal", "flat", "thick", "very_thick"],
+        "normal",
+      );
+    }
+    return {
+      muscle: muscle,
+      legLength: legLength,
+      shoulder: shoulder,
+      waist: waist,
+      hip: hip,
+      cup: cup,
+      chestThickness: chestThickness,
+    };
+  }
+
+  function categoryBiases(cats) {
+    var muscleMap = { normal: 1, slim: 0.94, toned: 1.04, muscular: 1.1 };
+    var legMap = { normal: 1, short: 0.94, long: 1.06 };
+    var shoulderMap = { normal: 1, narrow: 0.94, wide: 1.08 };
+    var waistMap = { normal: 1, slim: 0.94, thick: 1.08 };
+    var hipMap = { normal: 1, narrow: 0.94, wide: 1.08 };
+    var cupMap = {
+      normal: 1,
+      a: 0.96,
+      b: 1.0,
+      c: 1.04,
+      d: 1.08,
+      e_plus: 1.12,
+    };
+    var chestMap = {
+      normal: 1,
+      flat: 0.94,
+      thick: 1.06,
+      very_thick: 1.12,
+    };
+    var muscle = muscleMap[cats.muscle] || 1;
+    var leg = legMap[cats.legLength] || 1;
+    var shoulder = shoulderMap[cats.shoulder] || 1;
+    var waist = waistMap[cats.waist] || 1;
+    var hip = hipMap[cats.hip] || 1;
+    var cup = cats.cup ? cupMap[cats.cup] || 1 : 1;
+    var chestT = cats.chestThickness
+      ? chestMap[cats.chestThickness] || 1
+      : 1;
+    // Clamp stacked extremes so silhouette stays within common sense.
+    var limb = clamp(muscle, 0.9, 1.12);
+    var shoulderX = clamp(shoulder * (0.7 + 0.3 * limb), 0.88, 1.14);
+    var waistX = clamp(waist, 0.9, 1.12);
+    var hipX = clamp(hip, 0.9, 1.12);
+    var chestX = clamp(cup * chestT * (0.85 + 0.15 * limb), 0.9, 1.16);
+    var legY = clamp(leg, 0.92, 1.08);
+    // Soft global damp if many axes are far from normal.
+    var spread =
+      Math.abs(limb - 1) +
+      Math.abs(shoulderX - 1) +
+      Math.abs(waistX - 1) +
+      Math.abs(hipX - 1) +
+      Math.abs(chestX - 1) +
+      Math.abs(legY - 1);
+    var damp = spread > 0.35 ? 0.35 / spread : 1;
+    function towardOne(v) {
+      return 1 + (v - 1) * damp;
+    }
+    return {
+      limb: towardOne(limb),
+      shoulder: towardOne(shoulderX),
+      waist: towardOne(waistX),
+      hip: towardOne(hipX),
+      chest: towardOne(chestX),
+      leg: towardOne(legY),
+    };
+  }
+
   /** Mirror of app/lib/mannequin.ts for offline / proxy-less rebuild. */
   function buildProportions(input) {
     var heightCm = clamp(Number(input.heightCm) || 170, 120, 220);
     var weightKg = clamp(Number(input.weightKg) || 60, 30, 200);
     var gender = input.gender || "unspecified";
+    var cats = normalizeBodyCats(input.body || input.cats || {}, gender);
+    var catBias = categoryBiases(cats);
     var heightM = heightCm / 100;
     var bmi = weightKg / (heightM * heightM);
     var bmiFactor = clamp(Math.sqrt(bmi / 22), 0.75, 1.45);
@@ -64,17 +159,29 @@
     var defaultChest = 90 * bmiFactor * chestBias;
     var defaultWaist = 74 * bmiFactor;
     var defaultHip = 94 * bmiFactor * hipBias;
-    var chestScale = circScale(input.bustCm, defaultChest) * shoulderBias;
+    // Categories are primary; numeric cm (if present) still apply as override.
+    var chestScale =
+      circScale(input.bustCm, defaultChest) * shoulderBias * catBias.chest;
+    var waistScale = circScale(input.waistCm, defaultWaist) * catBias.waist;
+    var hipScale = circScale(input.hipCm, defaultHip) * catBias.hip;
+    var legBase = 0.48 * overallScale;
+    var torsoBase = 0.34 * overallScale;
+    // Leg length category: shift leg↔torso ratio while keeping height dominant.
+    var legLength = legBase * catBias.leg;
+    var torsoLength = torsoBase * (2 - catBias.leg);
     return {
       heightM: heightM,
       overallScale: overallScale,
-      shoulderScale: chestScale * (gender === "male" ? 1.05 : 0.98),
+      shoulderScale:
+        chestScale * (gender === "male" ? 1.05 : 0.98) * catBias.shoulder,
       chestScale: chestScale,
-      waistScale: circScale(input.waistCm, defaultWaist),
-      hipScale: circScale(input.hipCm, defaultHip),
-      limbThickness: clamp(bmiFactor * 0.95, 0.7, 1.35),
-      torsoLength: 0.34 * overallScale,
-      legLength: 0.48 * overallScale,
+      waistScale: waistScale,
+      hipScale: hipScale,
+      limbThickness: clamp(bmiFactor * 0.95 * catBias.limb, 0.7, 1.4),
+      torsoLength: torsoLength,
+      legLength: legLength,
+      catBias: catBias,
+      body: cats,
       bmi: Math.round(bmi * 10) / 10,
       gender: gender,
     };
@@ -88,14 +195,42 @@
       var n = Number(v);
       return isFinite(n) ? n : null;
     }
+    function cat(name) {
+      var v = fd.get(name);
+      return v == null ? "normal" : String(v);
+    }
+    var gender = String(fd.get("gender") || "");
+    var body = normalizeBodyCats(
+      {
+        muscle: cat("bodyMuscle"),
+        legLength: cat("bodyLegLength"),
+        shoulder: cat("bodyShoulder"),
+        waist: cat("bodyWaist"),
+        hip: cat("bodyHip"),
+        cup: cat("bodyCup"),
+        chestThickness: cat("bodyChestThickness"),
+      },
+      gender,
+    );
     return {
       heightCm: num("heightCm"),
       weightKg: num("weightKg"),
-      gender: String(fd.get("gender") || ""),
+      gender: gender,
+      body: body,
       bustCm: num("bustCm"),
       waistCm: num("waistCm"),
       hipCm: num("hipCm"),
     };
+  }
+
+  function syncGenderCategoryFields(form) {
+    if (!form) return;
+    var genderEl = form.querySelector("[name='gender'], [data-tryon-gender]");
+    var gender = genderEl ? String(genderEl.value || "") : "";
+    var cup = form.querySelector("[data-tryon-cat-cup]");
+    var chest = form.querySelector("[data-tryon-cat-chest]");
+    if (cup) cup.hidden = gender !== "female";
+    if (chest) chest.hidden = gender !== "male";
   }
 
   function validate(body) {
@@ -298,7 +433,7 @@
     var bodyGlbCache = Object.create(null);
     var bodyLoadToken = 0;
     // Cache-bust + version marker — must appear on overlay badge + status.
-    var OUTFIT_BODY_ASSET_V = "21-LIVE";
+    var OUTFIT_BODY_ASSET_V = "22-CAT";
     var BODY_CDN_MALE =
       "https://cdn.jsdelivr.net/gh/Tochimoto634/3d-outfit@cd04df2/public/tryon/bodies/body-male.glb";
     var BODY_CDN_FEMALE =
@@ -673,24 +808,40 @@
       var widthScale = clamp(p.limbThickness || 1, 0.78, 1.38);
       if (p.gender === "male") widthScale *= 1.04;
       else if (p.gender === "female") widthScale *= 0.98;
-      // Optional 詳細サイズ → crude XZ bias (not true morph / blendshapes).
+      // Category + optional cm → crude XZ/Y bias (not true morph / blendshapes).
       var chest = clamp(p.chestScale || 1, 0.72, 1.48);
       var waist = clamp(p.waistScale || 1, 0.72, 1.48);
       var hip = clamp(p.hipScale || 1, 0.72, 1.48);
-      var xzChest = chest * 0.55 + waist * 0.25 + hip * 0.2;
-      var xzHip = hip * 0.55 + waist * 0.35 + chest * 0.1;
+      var shoulder = clamp(
+        (p.shoulderScale || chest) / Math.max(chest, 0.01),
+        0.88,
+        1.16,
+      );
+      var cat = p.catBias || {};
+      var xzChest =
+        chest * 0.5 + waist * 0.22 + hip * 0.18 + shoulder * 0.1;
+      var xzHip = hip * 0.5 + waist * 0.32 + chest * 0.1 + shoulder * 0.08;
+      // Final clamp so stacked categories cannot explode silhouette.
+      xzChest = clamp(xzChest, 0.78, 1.42);
+      xzHip = clamp(xzHip, 0.78, 1.42);
+      var legY = clamp(cat.leg || 1, 0.92, 1.08);
       var sx =
         heightScale *
         widthScale *
         xzChest *
         (p.gender === "female" ? 0.97 : 1.03);
-      var sy = heightScale;
+      // Keep overall height from heightCm; leg category softly stretches Y mid-body feel via slight sy bias.
+      var sy = heightScale * (0.97 + 0.03 * legY);
       var sz =
         heightScale *
         widthScale *
         xzHip *
         (p.gender === "female" ? 1.04 : 0.98);
-      mannequinGroup.scale.set(sx, sy, sz);
+      mannequinGroup.scale.set(
+        clamp(sx, heightScale * 0.72, heightScale * 1.55),
+        clamp(sy, heightScale * 0.94, heightScale * 1.08),
+        clamp(sz, heightScale * 0.72, heightScale * 1.55),
+      );
       mannequinGroup.updateMatrixWorld(true);
 
       box.setFromObject(mannequinGroup);
@@ -1515,6 +1666,13 @@
     }
 
     if (form) {
+      syncGenderCategoryFields(form);
+      var genderSelect = form.querySelector("[name='gender'], [data-tryon-gender]");
+      if (genderSelect) {
+        genderSelect.addEventListener("change", function () {
+          syncGenderCategoryFields(form);
+        });
+      }
       form.addEventListener("submit", function (ev) {
         ev.preventDefault();
         ev.stopPropagation();

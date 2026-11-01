@@ -1,9 +1,19 @@
 /**
  * Parametric mannequin proportions for storefront try-on MVP.
- * No TRELLIS / photo scan — simple BMI + optional three-size heuristics.
+ * No TRELLIS / photo scan — BMI + TO-43 body categories (+ optional cm).
  */
 
 export type MannequinGender = "female" | "male" | "unspecified";
+
+export type BodyCategories = {
+  muscle: "normal" | "slim" | "toned" | "muscular";
+  legLength: "normal" | "short" | "long";
+  shoulder: "normal" | "narrow" | "wide";
+  waist: "normal" | "slim" | "thick";
+  hip: "normal" | "narrow" | "wide";
+  cup: "normal" | "a" | "b" | "c" | "d" | "e_plus" | null;
+  chestThickness: "normal" | "flat" | "thick" | "very_thick" | null;
+};
 
 export type MannequinInput = {
   /** cm */
@@ -11,10 +21,20 @@ export type MannequinInput = {
   /** kg */
   weightKg: number;
   gender: MannequinGender;
-  /** optional cm */
+  body?: Partial<BodyCategories> | null;
+  /** optional cm — demoted; categories are primary */
   bustCm?: number | null;
   waistCm?: number | null;
   hipCm?: number | null;
+};
+
+export type CategoryBias = {
+  limb: number;
+  shoulder: number;
+  waist: number;
+  hip: number;
+  chest: number;
+  leg: number;
 };
 
 export type MannequinProportions = {
@@ -30,6 +50,8 @@ export type MannequinProportions = {
   legLength: number;
   bmi: number;
   gender: MannequinGender;
+  body: BodyCategories;
+  catBias: CategoryBias;
 };
 
 const REF_HEIGHT_CM = 170;
@@ -41,8 +63,88 @@ function clamp(n: number, min: number, max: number) {
 
 function circumferenceToRadiusScale(cm: number | null | undefined, fallbackCm: number) {
   const value = cm != null && Number.isFinite(cm) && cm > 0 ? cm : fallbackCm;
-  // Reference chest ~90cm → scale 1
   return clamp(value / 90, 0.65, 1.55);
+}
+
+function pickCat<T extends string>(raw: unknown, allowed: readonly T[], fallback: T): T {
+  const v = String(raw || "").trim() as T;
+  return (allowed as readonly string[]).includes(v) ? v : fallback;
+}
+
+export function normalizeBodyCategories(
+  raw: Partial<BodyCategories> | null | undefined,
+  gender: MannequinGender,
+): BodyCategories {
+  const src = raw || {};
+  return {
+    muscle: pickCat(src.muscle, ["normal", "slim", "toned", "muscular"] as const, "normal"),
+    legLength: pickCat(src.legLength, ["normal", "short", "long"] as const, "normal"),
+    shoulder: pickCat(src.shoulder, ["normal", "narrow", "wide"] as const, "normal"),
+    waist: pickCat(src.waist, ["normal", "slim", "thick"] as const, "normal"),
+    hip: pickCat(src.hip, ["normal", "narrow", "wide"] as const, "normal"),
+    cup:
+      gender === "female"
+        ? pickCat(src.cup, ["normal", "a", "b", "c", "d", "e_plus"] as const, "normal")
+        : null,
+    chestThickness:
+      gender === "male"
+        ? pickCat(
+            src.chestThickness,
+            ["normal", "flat", "thick", "very_thick"] as const,
+            "normal",
+          )
+        : null,
+  };
+}
+
+export function categoryBiases(cats: BodyCategories): CategoryBias {
+  const muscleMap = { normal: 1, slim: 0.94, toned: 1.04, muscular: 1.1 } as const;
+  const legMap = { normal: 1, short: 0.94, long: 1.06 } as const;
+  const shoulderMap = { normal: 1, narrow: 0.94, wide: 1.08 } as const;
+  const waistMap = { normal: 1, slim: 0.94, thick: 1.08 } as const;
+  const hipMap = { normal: 1, narrow: 0.94, wide: 1.08 } as const;
+  const cupMap = {
+    normal: 1,
+    a: 0.96,
+    b: 1.0,
+    c: 1.04,
+    d: 1.08,
+    e_plus: 1.12,
+  } as const;
+  const chestMap = {
+    normal: 1,
+    flat: 0.94,
+    thick: 1.06,
+    very_thick: 1.12,
+  } as const;
+
+  const limb = clamp(muscleMap[cats.muscle], 0.9, 1.12);
+  const shoulderX = clamp(shoulderMap[cats.shoulder] * (0.7 + 0.3 * limb), 0.88, 1.14);
+  const waistX = clamp(waistMap[cats.waist], 0.9, 1.12);
+  const hipX = clamp(hipMap[cats.hip], 0.9, 1.12);
+  const cup = cats.cup ? cupMap[cats.cup] : 1;
+  const chestT = cats.chestThickness ? chestMap[cats.chestThickness] : 1;
+  const chestX = clamp(cup * chestT * (0.85 + 0.15 * limb), 0.9, 1.16);
+  const legY = clamp(legMap[cats.legLength], 0.92, 1.08);
+
+  const spread =
+    Math.abs(limb - 1) +
+    Math.abs(shoulderX - 1) +
+    Math.abs(waistX - 1) +
+    Math.abs(hipX - 1) +
+    Math.abs(chestX - 1) +
+    Math.abs(legY - 1);
+  const damp = spread > 0.35 ? 0.35 / spread : 1;
+  const towardOne = (v: number) => 1 + (v - 1) * damp;
+
+  return {
+    limb: towardOne(limb),
+    shoulder: towardOne(shoulderX),
+    waist: towardOne(waistX),
+    hip: towardOne(hipX),
+    chest: towardOne(chestX),
+    leg: towardOne(legY),
+  };
 }
 
 /**
@@ -52,13 +154,14 @@ export function buildMannequinProportions(input: MannequinInput): MannequinPropo
   const heightCm = clamp(Number(input.heightCm) || REF_HEIGHT_CM, 120, 220);
   const weightKg = clamp(Number(input.weightKg) || 60, 30, 200);
   const gender = input.gender || "unspecified";
+  const body = normalizeBodyCategories(input.body, gender);
+  const catBias = categoryBiases(body);
 
   const heightM = heightCm / 100;
   const bmi = weightKg / (heightM * heightM);
   const bmiFactor = clamp(Math.sqrt(bmi / REF_BMI), 0.75, 1.45);
   const overallScale = heightCm / REF_HEIGHT_CM;
 
-  // Soft gender bias when three sizes are omitted
   let shoulderBias = 1;
   let hipBias = 1;
   let chestBias = 1;
@@ -77,10 +180,18 @@ export function buildMannequinProportions(input: MannequinInput): MannequinPropo
   const defaultHip = 94 * bmiFactor * hipBias;
 
   const chestScale =
-    circumferenceToRadiusScale(input.bustCm, defaultChest) * shoulderBias;
-  const waistScale = circumferenceToRadiusScale(input.waistCm, defaultWaist);
-  const hipScale = circumferenceToRadiusScale(input.hipCm, defaultHip);
-  const shoulderScale = chestScale * (gender === "male" ? 1.05 : 0.98);
+    circumferenceToRadiusScale(input.bustCm, defaultChest) *
+    shoulderBias *
+    catBias.chest;
+  const waistScale =
+    circumferenceToRadiusScale(input.waistCm, defaultWaist) * catBias.waist;
+  const hipScale =
+    circumferenceToRadiusScale(input.hipCm, defaultHip) * catBias.hip;
+  const shoulderScale =
+    chestScale * (gender === "male" ? 1.05 : 0.98) * catBias.shoulder;
+
+  const legBase = 0.48 * overallScale;
+  const torsoBase = 0.34 * overallScale;
 
   return {
     heightM,
@@ -89,11 +200,13 @@ export function buildMannequinProportions(input: MannequinInput): MannequinPropo
     chestScale,
     waistScale,
     hipScale,
-    limbThickness: clamp(bmiFactor * 0.95, 0.7, 1.35),
-    torsoLength: 0.34 * overallScale,
-    legLength: 0.48 * overallScale,
+    limbThickness: clamp(bmiFactor * 0.95 * catBias.limb, 0.7, 1.4),
+    torsoLength: torsoBase * (2 - catBias.leg),
+    legLength: legBase * catBias.leg,
     bmi: Math.round(bmi * 10) / 10,
     gender,
+    body,
+    catBias,
   };
 }
 
@@ -101,6 +214,7 @@ export type TryOnBodyPayload = {
   heightCm: number;
   weightKg: number;
   gender: MannequinGender;
+  body: BodyCategories;
   bustCm?: number | null;
   waistCm?: number | null;
   hipCm?: number | null;
@@ -141,12 +255,18 @@ export function parseTryOnBody(raw: unknown): {
     return Number.isFinite(n) && n > 0 ? n : null;
   };
 
+  const nested =
+    body.body && typeof body.body === "object"
+      ? (body.body as Partial<BodyCategories>)
+      : {};
+
   return {
     ok: true,
     value: {
       heightCm,
       weightKg,
       gender,
+      body: normalizeBodyCategories(nested, gender),
       bustCm: optional(body.bustCm),
       waistCm: optional(body.waistCm),
       hipCm: optional(body.hipCm),

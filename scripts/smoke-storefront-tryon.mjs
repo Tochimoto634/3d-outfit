@@ -43,20 +43,45 @@ const female = buildMannequinProportions({
   bustCm: 84,
   waistCm: 64,
   hipCm: 90,
+  body: { waist: "slim", cup: "d", muscle: "normal" },
 });
 
 assert.equal(female.gender, "female");
 assert.ok(female.overallScale < 1);
 assert.ok(female.hipScale > female.waistScale);
 assert.ok(female.bmi > 15 && female.bmi < 30);
+assert.equal(female.body.cup, "d");
+assert.equal(female.body.chestThickness, null);
+assert.equal(female.body.waist, "slim");
+assert.ok(female.catBias.waist < 1);
 
 const male = buildMannequinProportions({
   heightCm: 180,
   weightKg: 78,
   gender: "male",
+  body: { chestThickness: "thick", shoulder: "wide" },
 });
 assert.ok(male.shoulderScale > female.shoulderScale * 0.9);
 assert.ok(male.overallScale > 1);
+assert.equal(male.body.cup, null);
+assert.equal(male.body.chestThickness, "thick");
+assert.ok(male.catBias.shoulder >= 1);
+
+const stacked = buildMannequinProportions({
+  heightCm: 170,
+  weightKg: 60,
+  gender: "female",
+  body: {
+    muscle: "muscular",
+    legLength: "long",
+    shoulder: "wide",
+    waist: "thick",
+    hip: "wide",
+    cup: "e_plus",
+  },
+});
+assert.ok(stacked.catBias.limb <= 1.12);
+assert.ok(stacked.catBias.chest <= 1.16);
 
 const bad = parseTryOnBody({ heightCm: 50, weightKg: 60, gender: "female" });
 assert.equal(bad.ok, false);
@@ -66,9 +91,13 @@ const good = parseTryOnBody({
   weightKg: 60,
   gender: "unspecified",
   bustCm: "",
+  body: { waist: "normal" },
 });
 assert.equal(good.ok, true);
 assert.equal(good.value.bustCm, null);
+assert.equal(good.value.body.cup, null);
+assert.equal(good.value.body.chestThickness, null);
+assert.equal(good.value.body.waist, "normal");
 
 assert.ok(fs.existsSync(bundlePath), "try-on-three.bundle.js missing");
 assert.ok(fs.statSync(bundlePath).size > 100_000, "three bundle too small");
@@ -146,16 +175,23 @@ assert.match(tryOnJs, /mountMakeHumanBody|__OutfitBodyMaleGlb/);
 assert.match(tryOnJs, /cdn\.jsdelivr\.net\/gh\/Tochimoto634\/3d-outfit/);
 assert.match(tryOnJs, /ensureBodyDataScripts|BODY_CDN_MALE/);
 assert.match(tryOnJs, /ALLOW_CAPSULE_FALLBACK\s*=\s*false/);
-assert.match(tryOnJs, /OUTFIT_BODY_ASSET_V\s*=\s*"21-LIVE"/);
+assert.match(tryOnJs, /OUTFIT_BODY_ASSET_V\s*=\s*"22-CAT"/);
+assert.match(tryOnJs, /categoryBiases|normalizeBodyCats|syncGenderCategoryFields/);
+assert.match(tryOnJs, /bodyMuscle|bodyWaist|bodyCup|bodyChestThickness/);
+const formFields = fs.readFileSync(formFieldsPath, "utf8");
+assert.match(formFields, /体型カテゴリ/);
+assert.match(formFields, /name="bodyWaist"/);
+assert.match(formFields, /data-tryon-cat-cup/);
+assert.match(formFields, /上級：詳細サイズ/);
 assert.match(tryOnJs, /applyBodyDataText|fetchBodyDataFile|dataUrlToArrayBuffer|loader\.parse/);
 assert.match(tryOnJs, /applyBodyDataText/);
 assert.match(tryOnJs, /tryOnScriptBaseUrl|body-male-data\.js/);
 assert.match(tryOnJs, /updateBuildBadge|data-tryon-build-badge/);
 assert.match(tryOnJs, /rebuildCapsuleMannequin|capsule-fallback/);
 assert.match(tryOnJs, /showProductOnlyPreview/);
-assert.match(galleryEmbed, /v=21live/);
+assert.match(galleryEmbed, /v=22cat/);
 assert.match(galleryEmbed, /data-tryon-build-badge/);
-assert.match(galleryEmbed, /tryon v21-LIVE/);
+assert.match(galleryEmbed, /tryon v22-CAT/);
 assert.match(galleryEmbed, /01a19540-d48d-7ee0-bc02-24b3c770447a/);
 assert.match(galleryEmbed, /data-outfit-gallery/);
 assert.match(galleryEmbed, /body-male-data\.js/);
@@ -163,7 +199,7 @@ assert.match(galleryEmbed, /body-female-data\.js/);
 assert.match(liquid, /body-male-data\.js/);
 assert.match(liquid, /data-tryon-build-badge/);
 assert.match(tryOnCss, /outfit-tryon__build-badge/);
-assert.match(galleryJs, /applyBodyDataText|fetchOne|v=21live/);
+assert.match(galleryJs, /applyBodyDataText|fetchOne|v=22cat/);
 const bodyMaleData = path.join(
   root,
   "extensions/storefront-tryon/assets/body-male-data.js",

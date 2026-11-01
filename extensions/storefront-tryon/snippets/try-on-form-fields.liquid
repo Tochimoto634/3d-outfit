@@ -1,5 +1,6 @@
 {% comment %}
   Shared compact try-on form fields (Japanese UI).
+  TO-43: body category selects; height/weight stay numeric; cm detail demoted.
   @param default_height {number}
   @param default_weight {number}
 {% endcomment %}
@@ -40,7 +41,7 @@
 
   <label class="outfit-tryon__field">
     <span>性別</span>
-    <select name="gender" required>
+    <select name="gender" required data-tryon-gender>
       <option value="" disabled selected>選択してください</option>
       <option value="female">女性</option>
       <option value="male">男性</option>
@@ -49,10 +50,83 @@
   </label>
 </fieldset>
 
-<details class="outfit-tryon__more">
-  <summary>詳細サイズ（任意）</summary>
+<fieldset class="outfit-tryon__fieldset" data-tryon-body-cats>
+  <legend>体型カテゴリ</legend>
+
+  <label class="outfit-tryon__field">
+    <span>筋肉量</span>
+    <select name="bodyMuscle">
+      <option value="normal" selected>普通</option>
+      <option value="slim">細め</option>
+      <option value="toned">引き締まっている</option>
+      <option value="muscular">筋肉質</option>
+    </select>
+  </label>
+
+  <label class="outfit-tryon__field">
+    <span>脚の長さ</span>
+    <select name="bodyLegLength">
+      <option value="normal" selected>普通</option>
+      <option value="short">短め</option>
+      <option value="long">長め</option>
+    </select>
+  </label>
+
+  <label class="outfit-tryon__field">
+    <span>肩幅</span>
+    <select name="bodyShoulder">
+      <option value="normal" selected>普通</option>
+      <option value="narrow">狭め</option>
+      <option value="wide">広め</option>
+    </select>
+  </label>
+
+  <label class="outfit-tryon__field">
+    <span>ウエスト</span>
+    <select name="bodyWaist">
+      <option value="normal" selected>普通</option>
+      <option value="slim">細め</option>
+      <option value="thick">太め</option>
+    </select>
+  </label>
+
+  <label class="outfit-tryon__field">
+    <span>ヒップ</span>
+    <select name="bodyHip">
+      <option value="normal" selected>普通</option>
+      <option value="narrow">すっきり</option>
+      <option value="wide">広め</option>
+    </select>
+  </label>
+
+  <label class="outfit-tryon__field" data-tryon-cat-cup hidden>
+    <span>カップ</span>
+    <select name="bodyCup">
+      <option value="normal" selected>普通</option>
+      <option value="a">A カップ相当</option>
+      <option value="b">B カップ相当</option>
+      <option value="c">C カップ相当</option>
+      <option value="d">D カップ相当</option>
+      <option value="e_plus">E 以上</option>
+    </select>
+  </label>
+
+  <label class="outfit-tryon__field" data-tryon-cat-chest hidden>
+    <span>胸の厚み</span>
+    <select name="bodyChestThickness">
+      <option value="normal" selected>普通</option>
+      <option value="flat">薄め</option>
+      <option value="thick">厚め</option>
+      <option value="very_thick">かなり厚め</option>
+    </select>
+  </label>
+</fieldset>
+
+<details class="outfit-tryon__more outfit-tryon__more--advanced">
+  <summary>上級：詳細サイズ cm（任意）</summary>
   <fieldset class="outfit-tryon__fieldset">
     <legend>スリーサイズ</legend>
+    <p class="outfit-tryon__hint-inline">通常は体型カテゴリを優先。数値は上書きバイアス用。</p>
     <div class="outfit-tryon__field-row">
       <label class="outfit-tryon__field">
         <span>バスト</span>

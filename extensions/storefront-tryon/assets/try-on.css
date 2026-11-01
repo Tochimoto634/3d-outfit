@@ -435,6 +435,17 @@
   grid-template-columns: repeat(2, minmax(0, 1fr));
 }
 
+.outfit-tryon__hint-inline {
+  margin: 0.35rem 0 0.15rem;
+  font-size: 0.72rem;
+  line-height: 1.35;
+  color: rgba(20, 20, 20, 0.62);
+}
+
+.outfit-tryon__more--advanced {
+  opacity: 0.92;
+}
+
 .outfit-tryon__more {
   font-size: 0.8rem;
   color: var(--ot-muted);
