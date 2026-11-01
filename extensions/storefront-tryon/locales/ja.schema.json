@@ -5,13 +5,6 @@
     "settings": {
       "enabled": {
         "label": "ギャラリー末尾に 3D試着スライドを追加"
-      },
-      "form_mode": {
-        "label": "体型フォームの表示",
-        "options": {
-          "details": "スライド内で折りたたみ",
-          "modal": "モーダルで開く"
-        }
       }
     }
   },
@@ -25,9 +18,6 @@
     "api_base_url": {
       "label": "API ベース URL（任意・開発用）",
       "info": "通常は空欄で OK（App Proxy /apps/3d-outfit/tryon）。テーマエディタプレビューで接続できないときだけ、`shopify app dev` が表示する https://….trycloudflare.com などのトンネル URL（末尾スラッシュなし）を貼り付けてください。"
-    },
-    "auto_rotate": {
-      "label": "初期状態で自動回転"
     },
     "garment_color": {
       "label": "布プロキシの色"

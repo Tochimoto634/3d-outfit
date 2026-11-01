@@ -210,19 +210,41 @@
     return true;
   }
 
+  function setDrawerOpen(root, open) {
+    var drawer = root.querySelector("[data-tryon-drawer]");
+    var toggle = root.querySelector("[data-tryon-drawer-toggle]");
+    if (!drawer) return;
+    if (open) {
+      drawer.hidden = false;
+      root.classList.add("is-drawer-open");
+    } else {
+      drawer.hidden = true;
+      root.classList.remove("is-drawer-open");
+    }
+    if (toggle) toggle.setAttribute("aria-expanded", open ? "true" : "false");
+  }
+
   function wireCompactUi(root) {
-    var openBtn = root.querySelector("[data-tryon-open-form]");
-    var dialog = root.querySelector("[data-tryon-dialog]");
-    if (openBtn && dialog && typeof dialog.showModal === "function") {
-      openBtn.addEventListener("click", function () {
-        dialog.showModal();
+    var toggle = root.querySelector("[data-tryon-drawer-toggle]");
+    var closeBtn = root.querySelector("[data-tryon-drawer-close]");
+    var drawer = root.querySelector("[data-tryon-drawer]");
+
+    if (toggle && drawer) {
+      toggle.addEventListener("click", function (ev) {
+        ev.preventDefault();
+        ev.stopPropagation();
+        setDrawerOpen(root, drawer.hidden);
+      });
+    }
+    if (closeBtn) {
+      closeBtn.addEventListener("click", function (ev) {
+        ev.preventDefault();
+        setDrawerOpen(root, false);
       });
     }
 
     root.addEventListener("outfit:tryon:ready", function () {
-      if (dialog && dialog.open) dialog.close();
-      var panel = root.querySelector("[data-tryon-form-panel]");
-      if (panel) panel.open = false;
+      setDrawerOpen(root, false);
     });
   }
 

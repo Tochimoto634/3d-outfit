@@ -116,7 +116,6 @@
     var overlay = root.querySelector("[data-tryon-overlay]");
     var statusEl = root.querySelector("[data-tryon-status]");
     var limitationsEl = root.querySelector("[data-tryon-limitations]");
-    var autoRotate = root.getAttribute("data-auto-rotate") !== "false";
     var garmentColor = root.getAttribute("data-garment-color") || "#3d5a80";
 
     var renderer = new THREE.WebGLRenderer({
@@ -133,10 +132,22 @@
     var controls = new OrbitControls(camera, canvas);
     controls.enableDamping = true;
     controls.target.set(0, 0.95, 0);
-    controls.autoRotate = autoRotate;
-    controls.autoRotateSpeed = 1.6;
+    controls.autoRotate = false;
+    controls.enablePan = false;
     controls.minDistance = 1.2;
     controls.maxDistance = 6;
+    // Yaw / horizontal 360 only — lock polar angle at front-fixed height.
+    controls.update();
+    var lockedPolar = controls.getPolarAngle();
+    controls.minPolarAngle = lockedPolar;
+    controls.maxPolarAngle = lockedPolar;
+
+    function lockOrbitHeight() {
+      controls.update();
+      lockedPolar = controls.getPolarAngle();
+      controls.minPolarAngle = lockedPolar;
+      controls.maxPolarAngle = lockedPolar;
+    }
 
     scene.add(new THREE.AmbientLight(0xffffff, 0.75));
     var key = new THREE.DirectionalLight(0xffffff, 1.05);
@@ -270,7 +281,7 @@
 
       controls.target.set(0, (legH + torsoH) * 0.55, 0);
       camera.position.set(0, (legH + torsoH) * 0.65, 2.4 + s);
-      controls.update();
+      lockOrbitHeight();
     }
 
     function clearGarment() {
@@ -408,10 +419,6 @@
       },
       hideOverlay: function () {
         if (overlay) overlay.hidden = true;
-      },
-      toggleAutoRotate: function () {
-        controls.autoRotate = !controls.autoRotate;
-        return controls.autoRotate;
       },
       applyTryOn: async function (body, asset) {
         var p = body.mannequin || buildProportions(body);
@@ -588,20 +595,12 @@
     var form = root.querySelector("[data-tryon-form]");
     var errorEl = root.querySelector("[data-tryon-error]");
     var submitBtn = root.querySelector("[data-tryon-submit]");
-    var toggleBtn = root.querySelector("[data-tryon-toggle-rotate]");
     var viewer = createViewer(
       libs.THREE,
       libs.OrbitControls,
       libs.GLTFLoader,
       root,
     );
-
-    if (toggleBtn) {
-      toggleBtn.addEventListener("click", function () {
-        var on = viewer.toggleAutoRotate();
-        viewer.setStatus(on ? "自動回転: ON" : "自動回転: OFF（ドラッグで回転）");
-      });
-    }
 
     if (form) {
       form.addEventListener("submit", async function (ev) {

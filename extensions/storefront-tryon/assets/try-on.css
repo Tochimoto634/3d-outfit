@@ -214,16 +214,16 @@
     linear-gradient(180deg, #faf8f5 0%, #f1ece4 100%);
 }
 
-.outfit-tryon__gallery-badge {
-  align-self: flex-start;
-  font-size: 0.72rem;
-  font-weight: 700;
-  letter-spacing: 0.08em;
-  text-transform: none;
-  color: var(--ot-accent);
-  border: 1px solid var(--ot-line);
-  background: rgba(255, 255, 255, 0.7);
-  padding: 0.2rem 0.45rem;
+.outfit-tryon--gallery .visually-hidden {
+  position: absolute !important;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
 }
 
 .outfit-tryon__gallery-stage {
@@ -232,8 +232,96 @@
 }
 
 .outfit-tryon--gallery .outfit-tryon__canvas-wrap {
+  position: relative;
   max-height: none;
   aspect-ratio: 1 / 1;
+}
+
+.outfit-tryon__gallery-badge {
+  position: absolute;
+  top: 0.65rem;
+  left: 0.65rem;
+  z-index: 3;
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  color: var(--ot-accent);
+  border: 1px solid var(--ot-line);
+  background: rgba(255, 255, 255, 0.82);
+  padding: 0.2rem 0.45rem;
+  pointer-events: none;
+}
+
+.outfit-tryon__drawer-trigger {
+  position: absolute;
+  top: 0.55rem;
+  right: 0.55rem;
+  z-index: 4;
+  width: 2.25rem;
+  height: 2.25rem;
+  display: grid;
+  place-items: center;
+  appearance: none;
+  border: 1px solid var(--ot-line);
+  border-radius: var(--ot-radius);
+  background: rgba(255, 255, 255, 0.9);
+  color: var(--ot-accent);
+  cursor: pointer;
+  box-shadow: 0 1px 2px rgba(28, 27, 26, 0.08);
+}
+
+.outfit-tryon__drawer-trigger:hover {
+  border-color: var(--ot-accent);
+}
+
+.outfit-tryon__drawer-trigger-icon {
+  display: grid;
+  place-items: center;
+  line-height: 0;
+}
+
+.outfit-tryon__drawer {
+  position: absolute;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 5;
+  width: min(86%, 300px);
+  display: flex;
+  flex-direction: column;
+  background: rgba(250, 248, 245, 0.97);
+  border-left: 1px solid var(--ot-line);
+  box-shadow: -8px 0 24px rgba(28, 27, 26, 0.08);
+  overflow: auto;
+  -webkit-overflow-scrolling: touch;
+}
+
+.outfit-tryon__drawer[hidden] {
+  display: none !important;
+}
+
+.outfit-tryon__drawer-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+  padding: 0.75rem 0.85rem;
+  border-bottom: 1px solid var(--ot-line);
+  font-size: 0.95rem;
+}
+
+.outfit-tryon__drawer-close {
+  appearance: none;
+  border: none;
+  background: transparent;
+  font-size: 1.35rem;
+  line-height: 1;
+  cursor: pointer;
+  color: var(--ot-muted);
+}
+
+.outfit-tryon__drawer .outfit-tryon__form {
+  padding: 0.75rem 0.85rem 1rem;
 }
 
 .outfit-tryon__form--compact {
@@ -256,73 +344,14 @@
   color: var(--ot-muted);
 }
 
-.outfit-tryon__more summary,
-.outfit-tryon__gallery-form > summary {
+.outfit-tryon__more summary {
   cursor: pointer;
   font-weight: 600;
   color: var(--ot-ink);
 }
 
-.outfit-tryon__gallery-form {
-  border: 1px solid var(--ot-line);
-  background: rgba(255, 255, 255, 0.55);
-  padding: 0.45rem 0.55rem;
-}
-
-.outfit-tryon__gallery-form[open] {
-  padding-bottom: 0.65rem;
-}
-
-.outfit-tryon__gallery-cta-row {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 0.4rem;
-}
-
 .outfit-tryon__limitations--compact {
   margin-top: 0;
-}
-
-.outfit-tryon__dialog {
-  border: 1px solid var(--ot-line);
-  border-radius: var(--ot-radius);
-  padding: 0;
-  width: min(420px, 92vw);
-  background: #faf8f5;
-  color: var(--ot-ink);
-  font-family: var(--ot-font);
-}
-
-.outfit-tryon__dialog::backdrop {
-  background: rgba(28, 27, 26, 0.45);
-}
-
-.outfit-tryon__dialog-chrome {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 0.5rem;
-  padding: 0.75rem 0.9rem;
-  border-bottom: 1px solid var(--ot-line);
-  margin: 0;
-}
-
-.outfit-tryon__dialog-title {
-  font-size: 1rem;
-}
-
-.outfit-tryon__dialog-close {
-  appearance: none;
-  border: none;
-  background: transparent;
-  font-size: 1.35rem;
-  line-height: 1;
-  cursor: pointer;
-  color: var(--ot-muted);
-}
-
-.outfit-tryon__dialog .outfit-tryon__form {
-  padding: 0.85rem 0.9rem 1rem;
 }
 
 .outfit-gallery-tryon__shell {

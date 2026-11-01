@@ -1,7 +1,7 @@
 {% comment %}
   3D OUTFIT — 商品メディアギャラリー最終スライド（App Embed）
   Helio（Horizon 系）の media-gallery / slideshow-slide に「3D試着」を末尾追加する。
-  既存の App Block「3D試着ビューア」は単独配置のフォールバックとして残す。
+  既存の App Block「3D試着（単独ブロック）」は任意フォールバック。
 {% endcomment %}
 
 {% if request.page_type == 'product' and product %}
@@ -18,13 +18,11 @@
       "proxyPath": "/apps/3d-outfit/tryon",
       "apiBase": {{ block.settings.api_base_url | json }},
       "threeBundle": {{ 'try-on-three.bundle.js' | asset_url | json }},
-      "autoRotate": {% if block.settings.auto_rotate %}true{% else %}false{% endif %},
       "garmentColor": {{ block.settings.garment_color | default: '#3d5a80' | json }},
       "defaultHeight": {{ block.settings.default_height | default: 170 }},
       "defaultWeight": {{ block.settings.default_weight | default: 60 }},
       "heading": {{ block.settings.heading | default: '3D試着' | json }},
       "subheading": {{ block.settings.subheading | default: '体型を入力して360°で試着確認' | json }},
-      "formMode": {{ block.settings.form_mode | default: 'details' | json }},
       "enabled": {% if block.settings.enabled %}true{% else %}false{% endif %}
     }
   </script>
@@ -40,55 +38,54 @@
       data-proxy-path="/apps/3d-outfit/tryon"
       data-api-base="{{ block.settings.api_base_url | escape }}"
       data-three-bundle="{{ 'try-on-three.bundle.js' | asset_url }}"
-      data-auto-rotate="{% if block.settings.auto_rotate %}true{% else %}false{% endif %}"
       data-garment-color="{{ block.settings.garment_color | default: '#3d5a80' | escape }}"
     >
-      <div class="outfit-tryon__gallery-badge" aria-hidden="true">3D試着</div>
-
       <div class="outfit-tryon__gallery-stage">
         <div class="outfit-tryon__canvas-wrap" data-tryon-canvas-wrap>
+          <div class="outfit-tryon__gallery-badge" aria-hidden="true">3D試着</div>
+
+          <button
+            type="button"
+            class="outfit-tryon__drawer-trigger"
+            data-tryon-drawer-toggle
+            aria-expanded="false"
+            aria-controls="OutfitTryOnDrawer-{{ block.id }}"
+            title="体型設定"
+          >
+            <span class="outfit-tryon__drawer-trigger-icon" aria-hidden="true">
+              <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8">
+                <circle cx="12" cy="12" r="3"></circle>
+                <path d="M12 2v2.2M12 19.8V22M4.2 4.2l1.6 1.6M18.2 18.2l1.6 1.6M2 12h2.2M19.8 12H22M4.2 19.8l1.6-1.6M18.2 5.8l1.6-1.6"></path>
+              </svg>
+            </span>
+            <span class="visually-hidden">体型設定を開く</span>
+          </button>
+
           <canvas data-tryon-canvas aria-label="3D試着ビューア"></canvas>
           <div class="outfit-tryon__overlay" data-tryon-overlay>
-            体型を入力して試着を開始してください
+            右上の設定から体型を入力してください
           </div>
+
+          <aside
+            class="outfit-tryon__drawer"
+            id="OutfitTryOnDrawer-{{ block.id }}"
+            data-tryon-drawer
+            hidden
+          >
+            <div class="outfit-tryon__drawer-head">
+              <strong>体型設定</strong>
+              <button type="button" class="outfit-tryon__drawer-close" data-tryon-drawer-close aria-label="閉じる">×</button>
+            </div>
+            <form class="outfit-tryon__form outfit-tryon__form--compact" data-tryon-form novalidate>
+              {% render 'try-on-form-fields', default_height: block.settings.default_height, default_weight: block.settings.default_weight %}
+            </form>
+          </aside>
         </div>
         <p class="outfit-tryon__hint" data-tryon-hint>
-          ドラッグで回転・ピンチで拡大
+          左右にドラッグで360°回転・ピンチ／ホイールで拡大
         </p>
         <p class="outfit-tryon__status" data-tryon-status></p>
       </div>
-
-      {% if block.settings.form_mode == 'modal' %}
-        <div class="outfit-tryon__gallery-cta-row">
-          <button type="button" class="outfit-tryon__btn outfit-tryon__btn--primary" data-tryon-open-form>
-            体型を入力して試着
-          </button>
-          <button type="button" class="outfit-tryon__btn" data-tryon-toggle-rotate>
-            自動回転 ON/OFF
-          </button>
-        </div>
-        <dialog class="outfit-tryon__dialog" data-tryon-dialog>
-          <form method="dialog" class="outfit-tryon__dialog-chrome">
-            <strong class="outfit-tryon__dialog-title">{{ block.settings.heading | default: '3D試着' }}</strong>
-            <button type="submit" class="outfit-tryon__dialog-close" value="cancel" aria-label="閉じる">×</button>
-          </form>
-          <form class="outfit-tryon__form outfit-tryon__form--compact" data-tryon-form novalidate>
-            {% render 'try-on-form-fields', default_height: block.settings.default_height, default_weight: block.settings.default_weight %}
-          </form>
-        </dialog>
-      {% else %}
-        <details class="outfit-tryon__gallery-form" data-tryon-form-panel open>
-          <summary>体型を入力</summary>
-          <form class="outfit-tryon__form outfit-tryon__form--compact" data-tryon-form novalidate>
-            {% render 'try-on-form-fields', default_height: block.settings.default_height, default_weight: block.settings.default_weight %}
-          </form>
-        </details>
-        <div class="outfit-tryon__gallery-cta-row">
-          <button type="button" class="outfit-tryon__btn" data-tryon-toggle-rotate>
-            自動回転 ON/OFF
-          </button>
-        </div>
-      {% endif %}
 
       <details class="outfit-tryon__limitations outfit-tryon__limitations--compact">
         <summary>表示の制限事項</summary>
@@ -129,32 +126,10 @@
       "default": "体型を入力して360°で試着確認"
     },
     {
-      "type": "select",
-      "id": "form_mode",
-      "label": "t:gallery_embed.settings.form_mode.label",
-      "options": [
-        {
-          "value": "details",
-          "label": "t:gallery_embed.settings.form_mode.options.details"
-        },
-        {
-          "value": "modal",
-          "label": "t:gallery_embed.settings.form_mode.options.modal"
-        }
-      ],
-      "default": "details"
-    },
-    {
       "type": "text",
       "id": "api_base_url",
       "label": "t:settings.api_base_url.label",
       "info": "t:settings.api_base_url.info"
-    },
-    {
-      "type": "checkbox",
-      "id": "auto_rotate",
-      "label": "t:settings.auto_rotate.label",
-      "default": true
     },
     {
       "type": "color",

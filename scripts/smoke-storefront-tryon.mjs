@@ -109,10 +109,19 @@ assert.match(tryOnCss, /outfit-tryon--gallery/);
 
 assert.match(tryOnJs, /OutfitTryOn/);
 assert.match(tryOnJs, /outfit:tryon:boot|outfit:tryon:ready/);
+assert.match(tryOnJs, /minPolarAngle/);
+assert.match(tryOnJs, /maxPolarAngle/);
+assert.doesNotMatch(tryOnJs, /toggleAutoRotate|autoRotate\s*=\s*true/);
+
+assert.match(galleryJs, /data-tryon-drawer/);
+assert.match(galleryEmbed, /data-tryon-drawer-toggle/);
+assert.doesNotMatch(galleryEmbed, /自動回転|auto_rotate|data-tryon-toggle-rotate/);
+assert.match(tryOnCss, /outfit-tryon__drawer/);
 
 console.log("smoke:storefront-tryon OK", {
   femaleBmi: female.bmi,
   maleScale: male.overallScale,
   threeBundleBytes: fs.statSync(bundlePath).size,
   galleryEmbed: true,
+  yawOnlyOrbit: true,
 });
