@@ -673,10 +673,23 @@
       var widthScale = clamp(p.limbThickness || 1, 0.78, 1.38);
       if (p.gender === "male") widthScale *= 1.04;
       else if (p.gender === "female") widthScale *= 0.98;
-      // Soft shoulder/hip: slightly wider X for male, Z for female hips feel.
-      var sx = heightScale * widthScale * (p.gender === "female" ? 0.97 : 1.03);
+      // Optional 詳細サイズ → crude XZ bias (not true morph / blendshapes).
+      var chest = clamp(p.chestScale || 1, 0.72, 1.48);
+      var waist = clamp(p.waistScale || 1, 0.72, 1.48);
+      var hip = clamp(p.hipScale || 1, 0.72, 1.48);
+      var xzChest = chest * 0.55 + waist * 0.25 + hip * 0.2;
+      var xzHip = hip * 0.55 + waist * 0.35 + chest * 0.1;
+      var sx =
+        heightScale *
+        widthScale *
+        xzChest *
+        (p.gender === "female" ? 0.97 : 1.03);
       var sy = heightScale;
-      var sz = heightScale * widthScale * (p.gender === "female" ? 1.04 : 0.98);
+      var sz =
+        heightScale *
+        widthScale *
+        xzHip *
+        (p.gender === "female" ? 1.04 : 0.98);
       mannequinGroup.scale.set(sx, sy, sz);
       mannequinGroup.updateMatrixWorld(true);
 
