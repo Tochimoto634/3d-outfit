@@ -222,12 +222,66 @@
       root.classList.remove("is-drawer-open");
     }
     if (toggle) toggle.setAttribute("aria-expanded", open ? "true" : "false");
+    root.dispatchEvent(
+      new CustomEvent("outfit:tryon:drawer", {
+        bubbles: true,
+        detail: { open: !!open },
+      }),
+    );
+  }
+
+  /**
+   * Helio slideshow.js attaches mousedown on the scroller (bubble) and calls
+   * preventDefault unless target.closest('model-viewer') — that cancels focus
+   * on height/weight/gender controls. Bubble stopPropagation lets the field
+   * receive the event, then keeps the slideshow from seeing it.
+   */
+  function shieldInteractive(el) {
+    if (!el || el.__outfitTryOnShielded) return;
+    el.__outfitTryOnShielded = true;
+    var types = [
+      "pointerdown",
+      "pointerup",
+      "mousedown",
+      "mouseup",
+      "touchstart",
+      "touchend",
+      "click",
+      "dblclick",
+      "wheel",
+      "contextmenu",
+      "keydown",
+      "keyup",
+      "keypress",
+    ];
+    types.forEach(function (type) {
+      el.addEventListener(type, function (ev) {
+        ev.stopPropagation();
+      });
+    });
+    // Rescue focus if another ancestor still canceling mousedown.
+    el.addEventListener("pointerup", function (ev) {
+      var field =
+        ev.target &&
+        ev.target.closest &&
+        ev.target.closest("input, select, textarea");
+      if (field && document.activeElement !== field) {
+        try {
+          field.focus();
+        } catch (err) {
+          /* ignore */
+        }
+      }
+    });
   }
 
   function wireCompactUi(root) {
     var toggle = root.querySelector("[data-tryon-drawer-toggle]");
     var closeBtn = root.querySelector("[data-tryon-drawer-close]");
     var drawer = root.querySelector("[data-tryon-drawer]");
+
+    shieldInteractive(toggle);
+    shieldInteractive(drawer);
 
     if (toggle && drawer) {
       toggle.addEventListener("click", function (ev) {
@@ -239,6 +293,7 @@
     if (closeBtn) {
       closeBtn.addEventListener("click", function (ev) {
         ev.preventDefault();
+        ev.stopPropagation();
         setDrawerOpen(root, false);
       });
     }

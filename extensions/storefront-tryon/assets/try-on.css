@@ -147,13 +147,16 @@
     linear-gradient(180deg, #f3eee6 0%, var(--ot-stage) 55%, #d8d0c4 100%);
   border: 1px solid var(--ot-line);
   overflow: hidden;
-  touch-action: none;
 }
 
 .outfit-tryon__canvas-wrap canvas {
   display: block;
+  position: relative;
+  z-index: 1;
   width: 100% !important;
   height: 100% !important;
+  /* Orbit only — do not put touch-action:none on the wrap (blocks drawer inputs). */
+  touch-action: none;
 }
 
 .outfit-tryon__overlay {
@@ -256,7 +259,7 @@
   position: absolute;
   top: 0.55rem;
   right: 0.55rem;
-  z-index: 4;
+  z-index: 6;
   width: 2.25rem;
   height: 2.25rem;
   display: grid;
@@ -268,6 +271,8 @@
   color: var(--ot-accent);
   cursor: pointer;
   box-shadow: 0 1px 2px rgba(28, 27, 26, 0.08);
+  pointer-events: auto;
+  touch-action: manipulation;
 }
 
 .outfit-tryon__drawer-trigger:hover {
@@ -285,7 +290,7 @@
   top: 0;
   right: 0;
   bottom: 0;
-  z-index: 5;
+  z-index: 7;
   width: min(86%, 300px);
   display: flex;
   flex-direction: column;
@@ -294,10 +299,37 @@
   box-shadow: -8px 0 24px rgba(28, 27, 26, 0.08);
   overflow: auto;
   -webkit-overflow-scrolling: touch;
+  /* Keep form usable inside Helio slideshow + orbit canvas. */
+  pointer-events: auto;
+  touch-action: auto;
+  isolation: isolate;
 }
 
 .outfit-tryon__drawer[hidden] {
   display: none !important;
+}
+
+.outfit-tryon__drawer input,
+.outfit-tryon__drawer select,
+.outfit-tryon__drawer button,
+.outfit-tryon__drawer textarea,
+.outfit-tryon__drawer summary {
+  pointer-events: auto;
+  touch-action: manipulation;
+  -webkit-user-select: text;
+  user-select: text;
+}
+
+.outfit-tryon__drawer select,
+.outfit-tryon__drawer button,
+.outfit-tryon__drawer summary {
+  -webkit-user-select: none;
+  user-select: none;
+}
+
+/* While body settings are open, canvas must not steal clicks/drags. */
+.outfit-tryon.is-drawer-open [data-tryon-canvas] {
+  pointer-events: none;
 }
 
 .outfit-tryon__drawer-head {

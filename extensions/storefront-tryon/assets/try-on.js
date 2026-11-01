@@ -142,6 +142,18 @@
     controls.minPolarAngle = lockedPolar;
     controls.maxPolarAngle = lockedPolar;
 
+    function setOrbitEnabled(enabled) {
+      controls.enabled = !!enabled;
+    }
+    // Body-settings drawer open → freeze orbit so fields stay focusable.
+    root.addEventListener("outfit:tryon:drawer", function (ev) {
+      var open = !!(ev && ev.detail && ev.detail.open);
+      setOrbitEnabled(!open);
+    });
+    if (root.classList.contains("is-drawer-open")) {
+      setOrbitEnabled(false);
+    }
+
     function lockOrbitHeight() {
       controls.update();
       lockedPolar = controls.getPolarAngle();

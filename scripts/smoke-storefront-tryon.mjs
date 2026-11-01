@@ -114,9 +114,19 @@ assert.match(tryOnJs, /maxPolarAngle/);
 assert.doesNotMatch(tryOnJs, /toggleAutoRotate|autoRotate\s*=\s*true/);
 
 assert.match(galleryJs, /data-tryon-drawer/);
+assert.match(galleryJs, /shieldInteractive|stopPropagation/);
+assert.match(galleryJs, /outfit:tryon:drawer/);
 assert.match(galleryEmbed, /data-tryon-drawer-toggle/);
 assert.doesNotMatch(galleryEmbed, /自動回転|auto_rotate|data-tryon-toggle-rotate/);
 assert.match(tryOnCss, /outfit-tryon__drawer/);
+assert.match(tryOnCss, /is-drawer-open/);
+assert.match(tryOnCss, /touch-action:\s*none/);
+assert.doesNotMatch(
+  tryOnCss,
+  /\.outfit-tryon__canvas-wrap\s*\{[^}]*touch-action:\s*none/s,
+);
+assert.match(tryOnJs, /outfit:tryon:drawer/);
+assert.match(tryOnJs, /controls\.enabled/);
 
 console.log("smoke:storefront-tryon OK", {
   femaleBmi: female.bmi,
@@ -124,4 +134,5 @@ console.log("smoke:storefront-tryon OK", {
   threeBundleBytes: fs.statSync(bundlePath).size,
   galleryEmbed: true,
   yawOnlyOrbit: true,
+  drawerInputShield: true,
 });
