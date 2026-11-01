@@ -64,6 +64,9 @@ shopify app dev
 - `extensions/storefront-tryon` — Theme App Extension（商品ページ「3D試着」App Block）
 - `/api/storefront/tryon` — CORS 試着 API（開発用）
 - `/api/proxy/tryon` — App Proxy（ストア `/apps/3d-outfit/tryon`）
+- `docs/storefront-tryon-api-base.md` — テーマエディタで API ベース URL に `shopify app dev` トンネルを入れる手順
+
+試着ビューアの Three.js は Theme App Extension アセット `try-on-three.bundle.js` を優先読み込み（CDN / CSP 回避）。再生成: `npm run build:tryon-three`。
 
 ## 現状と次のステップ
 

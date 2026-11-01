@@ -9,7 +9,7 @@
     },
     "api_base_url": {
       "label": "API base URL (optional, for development)",
-      "info": "Leave blank to use App Proxy (/apps/3d-outfit/tryon). Set the shopify app dev URL to use the CORS API."
+      "info": "Leave blank for App Proxy (/apps/3d-outfit/tryon). In theme editor preview, if the proxy fails, paste the shopify app dev tunnel URL (e.g. https://….trycloudflare.com, no trailing slash)."
     },
     "auto_rotate": {
       "label": "Auto-rotate by default"

@@ -12,6 +12,7 @@
   data-shop="{{ shop.permanent_domain }}"
   data-proxy-path="/apps/3d-outfit/tryon"
   data-api-base="{{ block.settings.api_base_url | escape }}"
+  data-three-bundle="{{ 'try-on-three.bundle.js' | asset_url }}"
   data-auto-rotate="{% if block.settings.auto_rotate %}true{% else %}false{% endif %}"
   data-garment-color="{{ block.settings.garment_color | default: '#3d5a80' | escape }}"
   {{ block.shopify_attributes }}
