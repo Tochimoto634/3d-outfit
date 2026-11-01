@@ -355,6 +355,18 @@
   line-height: 1.2;
 }
 
+.outfit-gallery-tryon__dot {
+  min-width: 4.5rem !important;
+  width: auto !important;
+  padding: 0 0.45rem !important;
+  font-size: 0.7rem !important;
+  font-weight: 700 !important;
+  letter-spacing: 0.04em;
+  color: #1f4b3a !important;
+  border: 1px solid rgba(31, 75, 58, 0.35) !important;
+  background: linear-gradient(160deg, #f3eee6 0%, #e0d7ca 100%) !important;
+}
+
 .outfit-gallery-tryon__adjacent {
   margin: 1rem 0 0;
   border: 1px solid #d9d2c8;

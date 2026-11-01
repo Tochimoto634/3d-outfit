@@ -112,12 +112,15 @@
         li.setAttribute(MARK, "1");
         var dot = document.createElement("button");
         dot.type = "button";
-        dot.className = "slideshow-control button button-unstyled";
+        dot.className =
+          "slideshow-control button button-unstyled outfit-gallery-tryon__dot";
         dot.setAttribute("aria-label", heading);
         dot.setAttribute("on:click", "/select/" + index);
         dot.setAttribute("ref", "dots[]");
+        dot.setAttribute(MARK, "1");
         dot.style.setProperty("animation-timeline", "--slide-" + index);
-        dot.textContent = String(index + 1);
+        // Helio default controls are dots (not thumbnails) — label the last one.
+        dot.textContent = heading || "3D試着";
         li.appendChild(dot);
         dots.appendChild(li);
       }
