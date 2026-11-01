@@ -1,11 +1,6 @@
 {
-  "3D試着ビューア": "3D試着ビューア",
-  "見出し": "見出し",
-  "説明文": "説明文",
-  "API ベース URL（任意・開発用）": "API ベース URL（任意・開発用）",
-  "空欄なら App Proxy (/apps/3d-outfit/tryon) を使います。shopify app dev のアプリ URL を入れると CORS API 経由でも取得できます。": "空欄なら App Proxy (/apps/3d-outfit/tryon) を使います。shopify app dev のアプリ URL を入れると CORS API 経由でも取得できます。",
-  "初期状態で自動回転": "初期状態で自動回転",
-  "布プロキシの色": "布プロキシの色",
-  "初期身長 (cm)": "初期身長 (cm)",
-  "初期体重 (kg)": "初期体重 (kg)"
+  "tryon": {
+    "title_default": "3D試着",
+    "submit": "マネキンを作成して試着"
+  }
 }

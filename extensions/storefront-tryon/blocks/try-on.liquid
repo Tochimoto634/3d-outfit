@@ -127,7 +127,7 @@
 
 {% schema %}
 {
-  "name": "3D試着ビューア",
+  "name": "t:name",
   "target": "section",
   "stylesheet": "try-on.css",
   "javascript": "try-on.js",
@@ -136,43 +136,43 @@
     {
       "type": "text",
       "id": "heading",
-      "label": "見出し",
+      "label": "t:settings.heading.label",
       "default": "3D試着"
     },
     {
       "type": "textarea",
       "id": "subheading",
-      "label": "説明文",
+      "label": "t:settings.subheading.label",
       "default": "身長・体重・性別を入力すると、マネキンに服を着せて360°確認できます。"
     },
     {
       "type": "text",
       "id": "api_base_url",
-      "label": "API ベース URL（任意・開発用）",
-      "info": "空欄なら App Proxy (/apps/3d-outfit/tryon) を使います。shopify app dev のアプリ URL を入れると CORS API 経由でも取得できます。"
+      "label": "t:settings.api_base_url.label",
+      "info": "t:settings.api_base_url.info"
     },
     {
       "type": "checkbox",
       "id": "auto_rotate",
-      "label": "初期状態で自動回転",
+      "label": "t:settings.auto_rotate.label",
       "default": true
     },
     {
       "type": "color",
       "id": "garment_color",
-      "label": "布プロキシの色",
+      "label": "t:settings.garment_color.label",
       "default": "#3d5a80"
     },
     {
       "type": "number",
       "id": "default_height",
-      "label": "初期身長 (cm)",
+      "label": "t:settings.default_height.label",
       "default": 170
     },
     {
       "type": "number",
       "id": "default_weight",
-      "label": "初期体重 (kg)",
+      "label": "t:settings.default_weight.label",
       "default": 60
     }
   ]
