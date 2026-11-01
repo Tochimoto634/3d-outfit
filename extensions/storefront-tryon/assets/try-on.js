@@ -127,19 +127,21 @@
 
     var scene = new THREE.Scene();
     var camera = new THREE.PerspectiveCamera(35, 1, 0.05, 50);
-    camera.position.set(0, 1.1, 3.2);
+    // ~150% subject scale + closer framing (upper body centered).
+    var CONTENT_SCALE = 1.5;
+    camera.position.set(0, 1.35, 2.15);
 
     var controls = new OrbitControls(camera, canvas);
     // Instant stop on release — no post-drag inertia/coasting.
     controls.enableDamping = false;
     controls.dampingFactor = 0;
-    controls.target.set(0, 0.95, 0);
+    controls.target.set(0, 1.35, 0);
     controls.autoRotate = false;
     controls.enablePan = false;
     // No wheel / pinch zoom — yaw drag only.
     controls.enableZoom = false;
-    controls.minDistance = 1.2;
-    controls.maxDistance = 6;
+    controls.minDistance = 0.9;
+    controls.maxDistance = 5;
     // Yaw / horizontal 360 only — lock polar angle at front-fixed height.
     controls.update();
     var lockedPolar = controls.getPolarAngle();
@@ -234,14 +236,53 @@
     );
     contactShadow.rotation.x = -Math.PI / 2;
     contactShadow.position.y = 0.001;
-    scene.add(contactShadow);
 
     var turntable = new THREE.Group();
+    turntable.scale.setScalar(CONTENT_SCALE);
     scene.add(turntable);
+    turntable.add(contactShadow);
     var mannequinGroup = new THREE.Group();
     var garmentGroup = new THREE.Group();
     turntable.add(mannequinGroup);
     turntable.add(garmentGroup);
+
+    var isGallery = root.hasAttribute("data-outfit-gallery-slide");
+    var bodyBtn = root.querySelector('[data-tryon-layer="body"]');
+    var productBtn = root.querySelector('[data-tryon-layer="product"]');
+
+    function syncLayerButtons() {
+      if (bodyBtn) {
+        var bodyOn = !!mannequinGroup.visible;
+        bodyBtn.classList.toggle("is-active", bodyOn);
+        bodyBtn.setAttribute("aria-pressed", bodyOn ? "true" : "false");
+      }
+      if (productBtn) {
+        var productOn = !!garmentGroup.visible;
+        productBtn.classList.toggle("is-active", productOn);
+        productBtn.setAttribute("aria-pressed", productOn ? "true" : "false");
+      }
+    }
+
+    function setLayerVisible(layer, visible) {
+      if (layer === "body") mannequinGroup.visible = !!visible;
+      if (layer === "product") garmentGroup.visible = !!visible;
+      syncLayerButtons();
+    }
+
+    function wireLayerToggles() {
+      if (!bodyBtn && !productBtn) return;
+      function onToggle(ev) {
+        ev.preventDefault();
+        ev.stopPropagation();
+        var btn = ev.currentTarget;
+        var layer = btn.getAttribute("data-tryon-layer");
+        if (layer === "body") setLayerVisible("body", !mannequinGroup.visible);
+        if (layer === "product") setLayerVisible("product", !garmentGroup.visible);
+      }
+      if (bodyBtn) bodyBtn.addEventListener("click", onToggle);
+      if (productBtn) productBtn.addEventListener("click", onToggle);
+    }
+    wireLayerToggles();
 
     var skinMat = new THREE.MeshStandardMaterial({
       color: 0xd4b39a,
@@ -346,8 +387,24 @@
         mannequinGroup.add(calf);
       });
 
-      controls.target.set(0, (legH + torsoH) * 0.55, 0);
-      camera.position.set(0, (legH + torsoH) * 0.65, 2.4 + s);
+      frameUpperBody(p);
+    }
+
+    /** Frame so the upper body sits near vertical center; keep current yaw. */
+    function frameUpperBody(p) {
+      var legH = p.legLength;
+      var torsoH = p.torsoLength;
+      var s = p.overallScale || 1;
+      // Chest / upper-torso in world Y (turntable is scaled).
+      var chestY = (legH + torsoH * 0.78) * CONTENT_SCALE;
+      var dist = (1.55 + s * 0.25) / Math.max(CONTENT_SCALE * 0.72, 1);
+      var yaw = controls.getAzimuthalAngle();
+      controls.target.set(0, chestY, 0);
+      camera.position.set(
+        Math.sin(yaw) * dist,
+        chestY,
+        Math.cos(yaw) * dist,
+      );
       lockOrbitHeight();
     }
 
@@ -543,6 +600,10 @@
       applyTryOn: async function (body, asset) {
         var p = body.mannequin || buildProportions(body);
         rebuildMannequin(p);
+        // After create: both body + product available and visible.
+        mannequinGroup.visible = true;
+        garmentGroup.visible = true;
+        syncLayerButtons();
         this.hideOverlay();
         resizeWhenVisible();
         if (asset && asset.storageUrl) {
@@ -559,8 +620,39 @@
             "実 GLB が無いため布プロキシで試着プレビューしています（TRELLIS 未接続）。",
           );
         }
+        frameUpperBody(p);
         resizeWhenVisible();
       },
+      /**
+       * Gallery idle: product only (no body) until the user creates a mannequin.
+       */
+      showProductOnlyPreview: function () {
+        var p = buildProportions({
+          heightCm: 170,
+          weightKg: 60,
+          gender: "unspecified",
+        });
+        while (mannequinGroup.children.length) {
+          var child = mannequinGroup.children.pop();
+          if (child.geometry) child.geometry.dispose();
+        }
+        addClothProxy(p);
+        mannequinGroup.visible = false;
+        garmentGroup.visible = true;
+        syncLayerButtons();
+        this.hideOverlay();
+        // Frame on garment torso center (no body yet).
+        var shirtY = (p.legLength + p.torsoLength * 0.55) * CONTENT_SCALE;
+        var dist = (1.55 + p.overallScale * 0.25) / Math.max(CONTENT_SCALE * 0.72, 1);
+        var yaw = controls.getAzimuthalAngle();
+        controls.target.set(0, shirtY, 0);
+        camera.position.set(Math.sin(yaw) * dist, shirtY, Math.cos(yaw) * dist);
+        lockOrbitHeight();
+        this.setStatus("商品プレビュー（人体モデルは設定から作成）");
+        resizeWhenVisible();
+      },
+      setLayerVisible: setLayerVisible,
+      syncLayerButtons: syncLayerButtons,
       resize: resizeWhenVisible,
       dispose: function () {
         cancelAnimationFrame(raf);
@@ -857,6 +949,15 @@
     }
 
     root.__outfitTryOnCreate = createPreview;
+    root.__outfitTryOnViewer = viewer;
+
+    // Gallery: show product-only before mannequin create.
+    if (
+      root.hasAttribute("data-outfit-gallery-slide") &&
+      viewer.showProductOnlyPreview
+    ) {
+      viewer.showProductOnlyPreview();
+    }
 
     if (form) {
       form.addEventListener("submit", function (ev) {

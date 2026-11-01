@@ -238,19 +238,42 @@
   aspect-ratio: 1 / 1;
 }
 
-.outfit-tryon__gallery-badge {
+.outfit-tryon__layer-toggles {
   position: absolute;
-  top: 0.65rem;
-  left: 0.65rem;
-  z-index: 3;
+  left: 0.55rem;
+  bottom: 0.55rem;
+  z-index: 6;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+  pointer-events: auto;
+  touch-action: manipulation;
+}
+
+.outfit-tryon__layer-btn {
+  appearance: none;
+  border: 1px solid #d0d0d0;
+  border-radius: var(--ot-radius);
+  background: rgba(255, 255, 255, 0.92);
+  color: #444;
+  font: inherit;
   font-size: 0.72rem;
-  font-weight: 700;
-  letter-spacing: 0.08em;
-  color: var(--ot-accent);
-  border: 1px solid var(--ot-line);
-  background: rgba(255, 255, 255, 0.82);
-  padding: 0.2rem 0.45rem;
-  pointer-events: none;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  padding: 0.35rem 0.55rem;
+  cursor: pointer;
+  box-shadow: 0 1px 2px rgba(28, 27, 26, 0.06);
+}
+
+.outfit-tryon__layer-btn:hover {
+  border-color: var(--ot-accent);
+}
+
+.outfit-tryon__layer-btn.is-active,
+.outfit-tryon__layer-btn[aria-pressed="true"] {
+  background: var(--ot-accent);
+  border-color: var(--ot-accent);
+  color: #f7f3ec;
 }
 
 .outfit-tryon__drawer-trigger {

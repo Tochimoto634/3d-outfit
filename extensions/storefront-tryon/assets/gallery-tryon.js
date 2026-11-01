@@ -235,7 +235,7 @@
       target &&
       target.closest &&
       target.closest(
-        "[data-tryon-drawer], [data-tryon-drawer-toggle], [data-outfit-interactive]",
+        "[data-tryon-drawer], [data-tryon-drawer-toggle], [data-tryon-layer-toggles], [data-outfit-interactive]",
       )
     );
   }
@@ -310,9 +310,11 @@
     var toggle = root.querySelector("[data-tryon-drawer-toggle]");
     var closeBtn = root.querySelector("[data-tryon-drawer-close]");
     var drawer = root.querySelector("[data-tryon-drawer]");
+    var layers = root.querySelector("[data-tryon-layer-toggles]");
 
     shieldInteractive(toggle);
     shieldInteractive(drawer);
+    shieldInteractive(layers);
     shieldOrbitCanvas(root);
 
     if (toggle && drawer) {

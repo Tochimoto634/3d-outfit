@@ -129,8 +129,15 @@ assert.match(galleryJs, /shieldOrbitCanvas/);
 assert.match(galleryJs, /data-tryon-orbit-host/);
 assert.match(galleryJs, /outfit:tryon:drawer/);
 assert.match(galleryEmbed, /data-tryon-drawer-toggle/);
+assert.match(galleryEmbed, /data-tryon-layer="body"/);
+assert.match(galleryEmbed, /data-tryon-layer="product"/);
+assert.match(galleryEmbed, /人体モデル/);
+assert.match(galleryEmbed, /商品/);
+assert.doesNotMatch(galleryEmbed, /outfit-tryon__gallery-badge|aria-hidden="true">3D試着/);
 assert.doesNotMatch(galleryEmbed, /自動回転|auto_rotate|data-tryon-toggle-rotate/);
 assert.match(tryOnCss, /outfit-tryon__drawer/);
+assert.match(tryOnCss, /outfit-tryon__layer-btn/);
+assert.match(tryOnJs, /CONTENT_SCALE\s*=\s*1\.5|showProductOnlyPreview|setLayerVisible/);
 assert.match(tryOnCss, /is-drawer-open/);
 assert.match(tryOnCss, /touch-action:\s*none/);
 assert.doesNotMatch(
@@ -152,6 +159,8 @@ console.log("smoke:storefront-tryon OK", {
   noZoom: true,
   ssenseStudioWhite: true,
   localFirstCreate: true,
+  layerToggles: true,
+  contentScale150: true,
   drawerInputShield: true,
   orbitCanvasShield: true,
 });

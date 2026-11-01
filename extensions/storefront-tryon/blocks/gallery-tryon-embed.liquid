@@ -42,8 +42,6 @@
     >
       <div class="outfit-tryon__gallery-stage">
         <div class="outfit-tryon__canvas-wrap" data-tryon-canvas-wrap>
-          <div class="outfit-tryon__gallery-badge" aria-hidden="true">3D試着</div>
-
           <button
             type="button"
             class="outfit-tryon__drawer-trigger"
@@ -61,9 +59,34 @@
             <span class="visually-hidden">体型設定を開く</span>
           </button>
 
+          <div
+            class="outfit-tryon__layer-toggles"
+            data-tryon-layer-toggles
+            data-outfit-interactive
+            role="group"
+            aria-label="表示レイヤー"
+          >
+            <button
+              type="button"
+              class="outfit-tryon__layer-btn"
+              data-tryon-layer="body"
+              aria-pressed="false"
+            >
+              人体モデル
+            </button>
+            <button
+              type="button"
+              class="outfit-tryon__layer-btn is-active"
+              data-tryon-layer="product"
+              aria-pressed="true"
+            >
+              商品
+            </button>
+          </div>
+
           <canvas data-tryon-canvas aria-label="3D試着ビューア"></canvas>
           <div class="outfit-tryon__overlay" data-tryon-overlay>
-            右上の設定から体型を入力してください
+            商品プレビューを表示中。右上の設定から体型を入力すると人体モデルも表示できます。
           </div>
 
           <aside
