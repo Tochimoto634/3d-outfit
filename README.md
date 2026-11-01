@@ -79,6 +79,20 @@ shopify app dev
 - 要ユーザー設定: `RUNPOD_API_KEY` + 正しい ComfyUI/TRELLIS の `RUNPOD_ENDPOINT_ID`
 - 未着手: 本格サイズ表パーサ、実 Comfy グラフ本番化、オブジェクトストレージ、実 TRELLIS 着装
 
+## RunPod Docker イメージ（ドラフト / TO-11）
+
+Serverless 用 ComfyUI + TRELLIS.2 ワーカーのスキャフォールド:
+
+- **[`docker/trellis-comfy/`](./docker/trellis-comfy/)** — `runpod/worker-comfyui:5.10.0-base` 派生 Dockerfile・ビルド手順・ブロッカー注記
+
+プッシュ後に RunPod「Deploy from a Docker image」へ入れるタグ（プレースホルダ）:
+
+```text
+YOUR_DOCKERHUB_USER/3d-outfit-trellis-comfy:0.1.0-draft
+```
+
+詳細は `docker/trellis-comfy/README.md` および Project Context の `docs/runpod-docker-image.md`。アプリ `.env` に入れるのは **`RUNPOD_API_KEY` と `RUNPOD_ENDPOINT_ID` のみ**（秘密はコミットしない）。別プロジェクト Endpoint（`silent_maroon_roundworm` / `wrong_rose_canidae`）は使わないこと。
+
 ## ライセンス
 
 ベーステンプレートは Shopify のテンプレートライセンスに従います。本リポジトリ固有コードのライセンスは別途定めるまで All Rights Reserved とします。

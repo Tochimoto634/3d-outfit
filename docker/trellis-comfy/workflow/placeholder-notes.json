@@ -1,0 +1,9 @@
+{
+  "_comment": "Not an executable Comfy graph. Reminder only — real API workflow lives in the Shopify app as config/runpod-trellis-workflow.json (placeholder Trellis2ImageTo3D / SaveGLB). Replace class_types with nodes that match the custom_nodes installed in this image after export from a working ComfyUI session.",
+  "app_contract": {
+    "submit": "POST /v2/{ENDPOINT_ID}/run",
+    "input_keys": ["workflow", "images", "photo_only", "product_snapshot_id", "meta"],
+    "output_must_include": "https URL to .glb (glb_url or files[].url) — never data: blob"
+  },
+  "do_not_include": ["size_chart", "sizeChart", "measurements"]
+}

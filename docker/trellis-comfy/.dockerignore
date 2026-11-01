@@ -1,0 +1,9 @@
+**/.git
+**/__pycache__
+**/*.pyc
+**/.DS_Store
+**/*secret*
+**/.env
+**/.env.*
+!env.endpoint.example
+README.md
