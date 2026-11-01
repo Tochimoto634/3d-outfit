@@ -433,13 +433,14 @@
     var bodyGlbCache = Object.create(null);
     var bodyLoadToken = 0;
     // Cache-bust + version marker — must appear on overlay badge + status.
-    var OUTFIT_BODY_ASSET_V = "23-GARM";
+    var OUTFIT_BODY_ASSET_V = "23-GARM2";
     var BODY_CDN_MALE =
       "https://cdn.jsdelivr.net/gh/Tochimoto634/3d-outfit@cd04df2/public/tryon/bodies/body-male.glb";
     var BODY_CDN_FEMALE =
       "https://cdn.jsdelivr.net/gh/Tochimoto634/3d-outfit@cd04df2/public/tryon/bodies/body-female.glb";
+    // Pin to commit with valid (JSON space-padded) sample-tee.glb
     var SAMPLE_GARMENT_CDN =
-      "https://cdn.jsdelivr.net/gh/Tochimoto634/3d-outfit@cursor/gallery-tryon-slide-a47d/public/tryon/garments/sample-tee.glb";
+      "https://cdn.jsdelivr.net/gh/Tochimoto634/3d-outfit@aa9573a/public/tryon/garments/sample-tee.glb";
     var bodyDataReady = null;
     // Force MakeHuman — no silent capsule. On failure: clear error on badge/status.
     var ALLOW_CAPSULE_FALLBACK = false;
@@ -1125,46 +1126,66 @@
       rootObj.position.y += L.chestY - center.y;
     }
 
+    function findSampleGarmentScriptSrc() {
+      var nodes = document.querySelectorAll("script[src]");
+      for (var i = 0; i < nodes.length; i++) {
+        var s = nodes[i].getAttribute("src") || "";
+        if (/garment-sample-data\.js|outfit-garment-sample-data\.js/.test(s)) {
+          return s;
+        }
+      }
+      var base = tryOnScriptBaseUrl();
+      if (!base) return "";
+      // Helio theme assets are prefixed outfit-*; extension uses bare names.
+      if (/outfit-try-on\.js/.test(tryOnScriptUrl || "")) {
+        return base + "outfit-garment-sample-data.js";
+      }
+      return base + "garment-sample-data.js";
+    }
+
     function resolveSampleGarmentUrl() {
       if (typeof window !== "undefined" && window.__OutfitSampleGarmentGlb) {
         return window.__OutfitSampleGarmentGlb;
       }
       var attr = root.getAttribute("data-garment-sample") || "";
       if (attr) return attr;
-      var nodes = document.querySelectorAll("script[src]");
-      for (var i = 0; i < nodes.length; i++) {
-        var src = nodes[i].getAttribute("src") || "";
-        if (/garment-sample-data\.js|outfit-garment-sample-data\.js/.test(src)) {
-          // Script may still be loading; CDN works as secondary.
-          break;
-        }
-      }
       return SAMPLE_GARMENT_CDN;
     }
 
     function ensureSampleGarmentData() {
       if (window.__OutfitSampleGarmentGlb) return Promise.resolve(true);
-      var src = "";
-      var nodes = document.querySelectorAll("script[src]");
-      for (var i = 0; i < nodes.length; i++) {
-        var s = nodes[i].getAttribute("src") || "";
-        if (/garment-sample-data\.js|outfit-garment-sample-data\.js/.test(s)) {
-          src = s;
-          break;
-        }
-      }
-      if (!src) {
-        var base = tryOnScriptBaseUrl();
-        if (base) src = base + "garment-sample-data.js";
-      }
+      var src = findSampleGarmentScriptSrc();
       if (!src) return Promise.resolve(false);
       return fetchBodyDataFile(src, "__OutfitSampleGarmentGlb").then(function (r) {
-        return !!(r && r.ok && window.__OutfitSampleGarmentGlb);
+        var ok = !!(r && r.ok && window.__OutfitSampleGarmentGlb);
+        try {
+          root.__outfitSampleFetch = { src: src, ok: ok, result: r };
+          console.info("[outfit-tryon] sample garment data", root.__outfitSampleFetch);
+        } catch (err) {
+          /* ignore */
+        }
+        return ok;
       });
     }
 
     function mountGarmentGltf(gltf, p) {
       var model = gltf.scene || gltf.scenes[0];
+      // Ensure visible material (sample GLB may ship without materials).
+      var mat = new THREE.MeshStandardMaterial({
+        color: 0x2a6f97,
+        roughness: 0.65,
+        metalness: 0.05,
+        side: THREE.DoubleSide,
+      });
+      model.traverse(function (obj) {
+        if (obj.isMesh) {
+          if (!obj.material || (obj.material && obj.material.isMeshBasicMaterial && !obj.material.map)) {
+            obj.material = mat;
+          }
+          obj.castShadow = false;
+          obj.receiveShadow = false;
+        }
+      });
       fitLoadedModel(model, p);
       garmentGroup.add(model);
     }
@@ -1222,35 +1243,61 @@
     }
 
     /**
-     * Prefer job GLB → sample tee → cloth proxy (last resort).
+     * Prefer job GLB → theme sample data URL → CDN sample → cloth.
      */
     async function loadPreferredGarment(p, asset) {
       var source =
         (asset && asset.source) ||
         (asset && asset.storageUrl ? "job" : "none");
       var url = asset && asset.storageUrl ? asset.storageUrl : null;
+      var tried = [];
 
-      if (url) {
+      // 1) Job / API URL (skip known-broken sample CDN pin — prefer theme embed).
+      var isSampleCdn =
+        url && String(url).indexOf("/tryon/garments/sample-tee.glb") >= 0;
+      if (url && !isSampleCdn) {
+        tried.push(url.slice(0, 80));
         var loaded = await loadGarmentGlb(url, p);
         if (loaded.ok) {
           return {
             mode: source === "sample" || (asset && asset.placeholder) ? "sample" : "job",
             ok: true,
+            tried: tried,
           };
         }
       }
 
+      // 2) Theme-hosted data URL (Helio) — most reliable on storefront CSP.
       await ensureSampleGarmentData();
-      var sampleUrl = resolveSampleGarmentUrl();
-      if (sampleUrl && sampleUrl !== url) {
-        var sampleLoaded = await loadGarmentGlb(sampleUrl, p);
-        if (sampleLoaded.ok) {
-          return { mode: "sample", ok: true };
+      var dataUrl = window.__OutfitSampleGarmentGlb || "";
+      if (dataUrl) {
+        tried.push("data-url");
+        var dataLoaded = await loadGarmentGlb(dataUrl, p);
+        if (dataLoaded.ok) {
+          return { mode: "sample", ok: true, tried: tried };
         }
+        tried.push("data-url-fail:" + (dataLoaded.reason || ""));
+      }
+
+      // 3) CDN sample (may lag until commit is on branch).
+      var cdn = SAMPLE_GARMENT_CDN;
+      if (cdn && cdn !== url) {
+        tried.push(cdn.slice(0, 80));
+        var cdnLoaded = await loadGarmentGlb(cdn, p);
+        if (cdnLoaded.ok) {
+          return { mode: "sample", ok: true, tried: tried };
+        }
+        tried.push("cdn-fail:" + (cdnLoaded.reason || ""));
       }
 
       addClothProxy(p);
-      return { mode: "cloth", ok: false };
+      try {
+        root.__outfitGarmentTried = tried;
+        console.warn("[outfit-tryon] garment fallback cloth", tried);
+      } catch (err) {
+        /* ignore */
+      }
+      return { mode: "cloth", ok: false, tried: tried };
     }
 
     function resize() {

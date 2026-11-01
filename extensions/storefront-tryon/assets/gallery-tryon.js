@@ -11,7 +11,7 @@
     function bust(url) {
       if (!url) return url;
       if (/[?&]v=/.test(url)) return url;
-      return url + (url.indexOf("?") >= 0 ? "&" : "?") + "v=23garm";
+      return url + (url.indexOf("?") >= 0 ? "&" : "?") + "v=23garm2";
     }
     function applyBodyDataText(text, marker) {
       if (!text || !marker) return false;
