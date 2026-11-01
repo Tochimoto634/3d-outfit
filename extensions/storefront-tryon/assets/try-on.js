@@ -454,11 +454,33 @@
     }
 
     function resize() {
-      var w = wrap.clientWidth || 320;
-      var h = wrap.clientHeight || 320;
+      var w = wrap.clientWidth;
+      var h = wrap.clientHeight;
+      // Hidden slideshow slides can report 0 — fall back to parent / square.
+      if (!w || !h) {
+        var host =
+          root.closest("slideshow-slide") ||
+          root.closest(".outfit-gallery-tryon__shell") ||
+          root.parentElement;
+        if (host) {
+          w = w || host.clientWidth;
+          h = h || host.clientHeight;
+        }
+      }
+      if (!w || !h) {
+        w = w || 320;
+        h = h || w;
+      }
       renderer.setSize(w, h, false);
       camera.aspect = w / Math.max(h, 1);
       camera.updateProjectionMatrix();
+    }
+
+    function resizeWhenVisible() {
+      resize();
+      requestAnimationFrame(function () {
+        resize();
+      });
     }
 
     var raf = 0;
@@ -470,7 +492,34 @@
 
     resize();
     animate();
-    window.addEventListener("resize", resize);
+    window.addEventListener("resize", resizeWhenVisible);
+
+    if (typeof ResizeObserver !== "undefined" && wrap) {
+      try {
+        var ro = new ResizeObserver(function () {
+          resizeWhenVisible();
+        });
+        ro.observe(wrap);
+      } catch (err) {
+        /* ignore */
+      }
+    }
+
+    var slideEl = root.closest("slideshow-slide");
+    if (slideEl && typeof MutationObserver !== "undefined") {
+      try {
+        new MutationObserver(function () {
+          if (slideEl.getAttribute("aria-hidden") !== "true") {
+            resizeWhenVisible();
+          }
+        }).observe(slideEl, {
+          attributes: true,
+          attributeFilter: ["aria-hidden", "class"],
+        });
+      } catch (err2) {
+        /* ignore */
+      }
+    }
 
     return {
       setStatus: function (text) {
@@ -495,6 +544,7 @@
         var p = body.mannequin || buildProportions(body);
         rebuildMannequin(p);
         this.hideOverlay();
+        resizeWhenVisible();
         if (asset && asset.storageUrl) {
           this.setStatus("服 3D を読み込み中…");
           var loaded = await loadGarmentGlb(asset.storageUrl, p);
@@ -509,11 +559,12 @@
             "実 GLB が無いため布プロキシで試着プレビューしています（TRELLIS 未接続）。",
           );
         }
-        resize();
+        resizeWhenVisible();
       },
+      resize: resizeWhenVisible,
       dispose: function () {
         cancelAnimationFrame(raf);
-        window.removeEventListener("resize", resize);
+        window.removeEventListener("resize", resizeWhenVisible);
         controls.dispose();
         renderer.dispose();
         try {
@@ -523,6 +574,27 @@
         }
       },
     };
+  }
+
+  function fetchWithTimeout(url, options, ms) {
+    var ctrl = typeof AbortController !== "undefined" ? new AbortController() : null;
+    var timer = null;
+    var opts = Object.assign({}, options || {});
+    if (ctrl) opts.signal = ctrl.signal;
+    var pending = fetch(url, opts);
+    var timeout = new Promise(function (_, reject) {
+      timer = setTimeout(function () {
+        try {
+          if (ctrl) ctrl.abort();
+        } catch (err) {
+          /* ignore */
+        }
+        reject(new Error("timeout"));
+      }, ms);
+    });
+    return Promise.race([pending, timeout]).finally(function () {
+      if (timer) clearTimeout(timer);
+    });
   }
 
   async function fetchTryOn(root, body) {
@@ -550,17 +622,30 @@
           encodeURIComponent(productId),
       );
     }
+    // App proxy can redirect-loop on misconfigured hosts — keep it last + timed.
     endpoints.push(proxyPath);
 
     var lastError = null;
     for (var i = 0; i < endpoints.length; i++) {
       try {
-        var res = await fetch(endpoints[i], {
-          method: "POST",
-          headers: { "Content-Type": "application/json", Accept: "application/json" },
-          body: JSON.stringify(payload),
-          credentials: apiBase ? "omit" : "same-origin",
-        });
+        var res = await fetchWithTimeout(
+          endpoints[i],
+          {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              Accept: "application/json",
+            },
+            body: JSON.stringify(payload),
+            credentials:
+              String(endpoints[i]).indexOf("http") === 0
+                ? "omit"
+                : "same-origin",
+            // Avoid password-wall redirect loops hanging the create button.
+            redirect: "manual",
+          },
+          5000,
+        );
         if (!res.ok) {
           lastError = "API エラー (" + res.status + ")";
           continue;
@@ -569,15 +654,20 @@
         if (data && data.tryOn) return data.tryOn;
         lastError = data && data.error ? data.error : "応答形式が不正です。";
       } catch (err) {
-        lastError = "通信に失敗しました。";
+        lastError =
+          err && err.message === "timeout"
+            ? "API タイムアウト"
+            : "通信に失敗しました。";
       }
     }
 
-    // Offline demo path — still build mannequin locally
+    // Offline / proxy-down path — still build mannequin locally
     return {
       asset: null,
       limitations: [
-        "API に接続できませんでした（" + (lastError || "不明") + "）。ローカル体型プレビューのみ表示します。",
+        "API に接続できませんでした（" +
+          (lastError || "不明") +
+          "）。ローカル体型プレビューのみ表示します。",
         "TRELLIS 実生成は未接続です。",
       ],
       mannequin: buildProportions(body),
@@ -678,45 +768,107 @@
       root,
     );
 
-    if (form) {
-      form.addEventListener("submit", async function (ev) {
-        ev.preventDefault();
-        var body = formValues(form);
-        var err = validate(body);
-        if (errorEl) {
-          errorEl.hidden = !err;
-          errorEl.textContent = err || "";
+    async function createPreview() {
+      if (!form) return;
+      var body = formValues(form);
+      var err = validate(body);
+      if (errorEl) {
+        errorEl.hidden = !err;
+        errorEl.textContent = err || "";
+      }
+      if (err) {
+        // Keep drawer open so the user sees validation errors.
+        root.dispatchEvent(
+          new CustomEvent("outfit:tryon:drawer", {
+            bubbles: true,
+            detail: { open: true },
+          }),
+        );
+        var drawer = root.querySelector("[data-tryon-drawer]");
+        if (drawer) {
+          drawer.hidden = false;
+          root.classList.add("is-drawer-open");
         }
-        if (err) return;
+        return;
+      }
 
-        if (submitBtn) {
-          submitBtn.disabled = true;
-          submitBtn.textContent = "作成中…";
+      if (submitBtn) {
+        submitBtn.disabled = true;
+        submitBtn.textContent = "作成中…";
+      }
+      viewer.setStatus("体型を計算しています…");
+
+      try {
+        // Local-first: always show mannequin+cloth immediately so a hanging
+        // app-proxy / CORS failure cannot leave an empty viewer.
+        var localMannequin = buildProportions(body);
+        await viewer.applyTryOn(
+          Object.assign({}, body, { mannequin: localMannequin }),
+          null,
+        );
+        root.dispatchEvent(
+          new CustomEvent("outfit:tryon:ready", { bubbles: true }),
+        );
+        viewer.setStatus(
+          "ローカル体型プレビューを表示中。アセットを確認しています…",
+        );
+
+        var tryOn = await fetchTryOn(root, body);
+        if (tryOn && tryOn.limitations) {
+          viewer.setLimitations(tryOn.limitations);
         }
-        viewer.setStatus("体型を計算し、アセットを取得しています…");
-
-        try {
-          var tryOn = await fetchTryOn(root, body);
-          viewer.setLimitations(tryOn.limitations || []);
+        if (tryOn && tryOn.asset && tryOn.asset.storageUrl) {
           await viewer.applyTryOn(
-            Object.assign({}, body, { mannequin: tryOn.mannequin }),
+            Object.assign({}, body, {
+              mannequin: tryOn.mannequin || localMannequin,
+            }),
             tryOn.asset,
           );
+        } else if (tryOn && tryOn._offline) {
+          viewer.setStatus(
+            "API 未接続のため布プロキシで試着プレビューしています。",
+          );
+        } else {
+          viewer.setStatus(
+            "実 GLB が無いため布プロキシで試着プレビューしています。",
+          );
+        }
+      } catch (e) {
+        // Last resort: still attempt a local mannequin.
+        try {
+          await viewer.applyTryOn(body, null);
           root.dispatchEvent(
             new CustomEvent("outfit:tryon:ready", { bubbles: true }),
           );
-        } catch (e) {
+        } catch (e2) {
           if (errorEl) {
             errorEl.hidden = false;
             errorEl.textContent = "試着プレビューの生成に失敗しました。";
           }
-        } finally {
-          if (submitBtn) {
-            submitBtn.disabled = false;
-            submitBtn.textContent = "マネキンを作成して試着";
-          }
+          viewer.setStatus("試着プレビューの生成に失敗しました。");
         }
+      } finally {
+        if (submitBtn) {
+          submitBtn.disabled = false;
+          submitBtn.textContent = "マネキンを作成して試着";
+        }
+        if (viewer.resize) viewer.resize();
+      }
+    }
+
+    root.__outfitTryOnCreate = createPreview;
+
+    if (form) {
+      form.addEventListener("submit", function (ev) {
+        ev.preventDefault();
+        ev.stopPropagation();
+        createPreview();
       });
+    }
+
+    if (root.__outfitTryOnPendingCreate) {
+      root.__outfitTryOnPendingCreate = false;
+      createPreview();
     }
   }
 

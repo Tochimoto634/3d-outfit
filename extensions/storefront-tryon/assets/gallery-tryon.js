@@ -335,9 +335,36 @@
     });
   }
 
+  /**
+   * Prevent native form navigation before Three.js bindRoot attaches.
+   * Queues create if the viewer is not ready yet.
+   */
+  function wireFormSubmitGuard(root) {
+    var form = root.querySelector("[data-tryon-form]");
+    if (!form || form.__outfitTryOnSubmitGuarded) return;
+    form.__outfitTryOnSubmitGuarded = true;
+    form.addEventListener(
+      "submit",
+      function (ev) {
+        ev.preventDefault();
+        ev.stopPropagation();
+        if (typeof root.__outfitTryOnCreate === "function") {
+          root.__outfitTryOnCreate();
+          return;
+        }
+        root.__outfitTryOnPendingCreate = true;
+        var status = root.querySelector("[data-tryon-status]");
+        if (status) status.textContent = "3D ビューアを準備しています…";
+        requestTryOnBoot();
+      },
+      true,
+    );
+  }
+
   function mountRoot(cfg) {
     var root = cloneTryOnRoot(cfg);
     if (!root) return null;
+    wireFormSubmitGuard(root);
     wireCompactUi(root);
     return root;
   }
