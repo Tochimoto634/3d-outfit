@@ -143,6 +143,8 @@ assert.match(tryOnJs, /fitVisibleContent/);
 assert.match(tryOnJs, /showProductOnlyPreview|setLayerVisible/);
 assert.doesNotMatch(tryOnJs, /CONTENT_SCALE\s*=\s*1\.5/);
 assert.match(tryOnJs, /mountMakeHumanBody|__OutfitBodyMaleGlb/);
+assert.match(tryOnJs, /cdn\.jsdelivr\.net\/gh\/Tochimoto634\/3d-outfit/);
+assert.match(tryOnJs, /ensureBodyDataScripts|BODY_CDN_MALE/);
 assert.match(tryOnJs, /rebuildCapsuleMannequin/);
 assert.match(galleryEmbed, /body-male-data\.js/);
 assert.match(galleryEmbed, /body-female-data\.js/);

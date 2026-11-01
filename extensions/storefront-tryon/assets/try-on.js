@@ -297,10 +297,96 @@
 
     var bodyGlbCache = Object.create(null);
     var bodyLoadToken = 0;
+    // Public CDN fallback (TAE cannot host .glb; app-dev also rejected .glb).
+    // Pin updated on each body-mesh commit.
+    var BODY_CDN_MALE =
+      "https://cdn.jsdelivr.net/gh/Tochimoto634/3d-outfit@3ea4dba/public/tryon/bodies/body-male.glb";
+    var BODY_CDN_FEMALE =
+      "https://cdn.jsdelivr.net/gh/Tochimoto634/3d-outfit@3ea4dba/public/tryon/bodies/body-female.glb";
+    var bodyDataReady = null;
+
+    function loadScriptOnce(url, marker) {
+      return new Promise(function (resolve, reject) {
+        if (!url) {
+          resolve(false);
+          return;
+        }
+        if (marker && typeof window !== "undefined" && window[marker]) {
+          resolve(true);
+          return;
+        }
+        var existing = document.querySelector(
+          'script[data-outfit-body-src="' + url + '"]',
+        );
+        if (existing) {
+          existing.addEventListener("load", function () {
+            resolve(true);
+          });
+          existing.addEventListener("error", function () {
+            resolve(false);
+          });
+          return;
+        }
+        var s = document.createElement("script");
+        s.src = url;
+        s.async = true;
+        s.setAttribute("data-outfit-body-src", url);
+        s.onload = function () {
+          resolve(true);
+        };
+        s.onerror = function () {
+          resolve(false);
+        };
+        document.head.appendChild(s);
+      });
+    }
+
+    /** Ensure body-*-data.js globals exist when theme embed URLs are known. */
+    function ensureBodyDataScripts() {
+      if (bodyDataReady) return bodyDataReady;
+      bodyDataReady = Promise.resolve().then(function () {
+        if (
+          typeof window !== "undefined" &&
+          window.__OutfitBodyMaleGlb &&
+          window.__OutfitBodyFemaleGlb
+        ) {
+          return true;
+        }
+        var cfgUrls = root.__outfitBodyDataUrls || {};
+        var maleSrc =
+          cfgUrls.male ||
+          root.getAttribute("data-body-male-data") ||
+          "";
+        var femaleSrc =
+          cfgUrls.female ||
+          root.getAttribute("data-body-female-data") ||
+          "";
+        // Discover from page scripts if embed already injected them.
+        if (!maleSrc || !femaleSrc) {
+          var nodes = document.querySelectorAll("script[src]");
+          for (var i = 0; i < nodes.length; i++) {
+            var src = nodes[i].getAttribute("src") || "";
+            if (!maleSrc && /body-male-data\.js/.test(src)) maleSrc = src;
+            if (!femaleSrc && /body-female-data\.js/.test(src)) femaleSrc = src;
+          }
+        }
+        return Promise.all([
+          loadScriptOnce(maleSrc, "__OutfitBodyMaleGlb"),
+          loadScriptOnce(femaleSrc, "__OutfitBodyFemaleGlb"),
+        ]).then(function () {
+          return !!(
+            typeof window !== "undefined" &&
+            (window.__OutfitBodyMaleGlb || window.__OutfitBodyFemaleGlb)
+          );
+        });
+      });
+      return bodyDataReady;
+    }
 
     function bodyUrlForGender(gender) {
-      // Prefer theme-legal base64 data URLs (Shopify TAE forbids .glb assets),
-      // then explicit data-body-* / config URLs (app proxy / CDN).
+      // 1) theme-legal base64 data URLs from body-*-data.js
+      // 2) explicit data-body-* / config
+      // 3) jsDelivr GLB (always available, CORS OK)
       var maleEmbedded =
         typeof window !== "undefined" && window.__OutfitBodyMaleGlb
           ? window.__OutfitBodyMaleGlb
@@ -313,12 +399,12 @@
         maleEmbedded ||
         root.getAttribute("data-body-male") ||
         (root.__outfitBodyUrls && root.__outfitBodyUrls.male) ||
-        "";
+        BODY_CDN_MALE;
       var female =
         femaleEmbedded ||
         root.getAttribute("data-body-female") ||
         (root.__outfitBodyUrls && root.__outfitBodyUrls.female) ||
-        "";
+        BODY_CDN_FEMALE;
       if (gender === "female") return female || male;
       return male || female;
     }
@@ -468,27 +554,49 @@
     }
 
     function rebuildMannequin(p) {
-      var url = bodyUrlForGender(p.gender);
       var token = ++bodyLoadToken;
       function finish(source) {
         root.__outfitBodySource = source;
+        try {
+          root.setAttribute("data-body-source", source);
+        } catch (err) {
+          /* ignore */
+        }
         fitVisibleContent();
         return { source: source };
       }
-      if (!url) {
-        rebuildCapsuleMannequin(p);
-        return Promise.resolve(finish("capsule"));
-      }
-      return loadBodyGltf(url)
-        .then(function (gltf) {
-          if (token !== bodyLoadToken) return { source: "stale" };
-          mountMakeHumanBody(gltf, p);
-          return finish("makehuman");
-        })
+      return ensureBodyDataScripts()
         .catch(function () {
-          if (token !== bodyLoadToken) return { source: "stale" };
-          rebuildCapsuleMannequin(p);
-          return finish("capsule-fallback");
+          return false;
+        })
+        .then(function () {
+          var url = bodyUrlForGender(p.gender);
+          if (!url) {
+            rebuildCapsuleMannequin(p);
+            return finish("capsule");
+          }
+          return loadBodyGltf(url)
+            .then(function (gltf) {
+              if (token !== bodyLoadToken) return { source: "stale" };
+              mountMakeHumanBody(gltf, p);
+              return finish("makehuman");
+            })
+            .catch(function (err1) {
+              // If embedded data URL failed, force CDN GLB once.
+              var cdn =
+                p.gender === "female" ? BODY_CDN_FEMALE : BODY_CDN_MALE;
+              if (!cdn || cdn === url) throw err1;
+              return loadBodyGltf(cdn).then(function (gltf) {
+                if (token !== bodyLoadToken) return { source: "stale" };
+                mountMakeHumanBody(gltf, p);
+                return finish("makehuman-cdn");
+              });
+            })
+            .catch(function () {
+              if (token !== bodyLoadToken) return { source: "stale" };
+              rebuildCapsuleMannequin(p);
+              return finish("capsule-fallback");
+            });
         });
     }
 
@@ -808,7 +916,9 @@
         } else {
           addClothProxy(p);
           var bodyNote =
-            bodyResult && bodyResult.source === "makehuman"
+            bodyResult &&
+            bodyResult.source &&
+            String(bodyResult.source).indexOf("makehuman") === 0
               ? "MakeHuman系人体 + "
               : "";
           this.setStatus(
@@ -1109,14 +1219,16 @@
           );
         } else if (tryOn && tryOn._offline) {
           viewer.setStatus(
-            (root.__outfitBodySource === "makehuman"
+            (root.__outfitBodySource &&
+            String(root.__outfitBodySource).indexOf("makehuman") === 0
               ? "MakeHuman系人体 + "
               : "") +
               "API 未接続のため布プロキシで試着プレビューしています。",
           );
         } else {
           viewer.setStatus(
-            (root.__outfitBodySource === "makehuman"
+            (root.__outfitBodySource &&
+            String(root.__outfitBodySource).indexOf("makehuman") === 0
               ? "MakeHuman系人体 + "
               : "") +
               "実 GLB が無いため布プロキシで試着プレビューしています。",

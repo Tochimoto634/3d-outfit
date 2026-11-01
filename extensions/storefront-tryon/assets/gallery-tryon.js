@@ -42,10 +42,21 @@
     if (!root) return null;
     if (cfg.bodyMale) root.setAttribute("data-body-male", cfg.bodyMale);
     if (cfg.bodyFemale) root.setAttribute("data-body-female", cfg.bodyFemale);
+    if (cfg.bodyMaleData) {
+      root.setAttribute("data-body-male-data", cfg.bodyMaleData);
+    }
+    if (cfg.bodyFemaleData) {
+      root.setAttribute("data-body-female-data", cfg.bodyFemaleData);
+    }
     if (cfg.threeBundle) root.setAttribute("data-three-bundle", cfg.threeBundle);
     root.__outfitBodyUrls = {
       male: cfg.bodyMale || root.getAttribute("data-body-male") || "",
       female: cfg.bodyFemale || root.getAttribute("data-body-female") || "",
+    };
+    root.__outfitBodyDataUrls = {
+      male: cfg.bodyMaleData || root.getAttribute("data-body-male-data") || "",
+      female:
+        cfg.bodyFemaleData || root.getAttribute("data-body-female-data") || "",
     };
     return root;
   }
