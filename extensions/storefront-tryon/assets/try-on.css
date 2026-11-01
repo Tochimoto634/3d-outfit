@@ -197,3 +197,183 @@
   margin: 0.5rem 0 0;
   padding-left: 1.2rem;
 }
+
+/* —— Gallery last-slide (Helio / compact) —— */
+
+.outfit-tryon--gallery {
+  margin: 0;
+  padding: 0.75rem;
+  height: 100%;
+  min-height: 100%;
+  display: flex;
+  flex-direction: column;
+  gap: 0.55rem;
+  border: none;
+  background:
+    radial-gradient(120% 90% at 0% 0%, #ebe4d8 0%, transparent 50%),
+    linear-gradient(180deg, #faf8f5 0%, #f1ece4 100%);
+}
+
+.outfit-tryon__gallery-badge {
+  align-self: flex-start;
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: none;
+  color: var(--ot-accent);
+  border: 1px solid var(--ot-line);
+  background: rgba(255, 255, 255, 0.7);
+  padding: 0.2rem 0.45rem;
+}
+
+.outfit-tryon__gallery-stage {
+  flex: 1 1 auto;
+  min-height: 0;
+}
+
+.outfit-tryon--gallery .outfit-tryon__canvas-wrap {
+  max-height: none;
+  aspect-ratio: 1 / 1;
+}
+
+.outfit-tryon__form--compact {
+  gap: 0.55rem;
+}
+
+.outfit-tryon__field-row {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 0.4rem;
+}
+
+.outfit-tryon__field-row .outfit-tryon__field:only-child,
+.outfit-tryon__form--compact > .outfit-tryon__fieldset > .outfit-tryon__field-row {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.outfit-tryon__more {
+  font-size: 0.8rem;
+  color: var(--ot-muted);
+}
+
+.outfit-tryon__more summary,
+.outfit-tryon__gallery-form > summary {
+  cursor: pointer;
+  font-weight: 600;
+  color: var(--ot-ink);
+}
+
+.outfit-tryon__gallery-form {
+  border: 1px solid var(--ot-line);
+  background: rgba(255, 255, 255, 0.55);
+  padding: 0.45rem 0.55rem;
+}
+
+.outfit-tryon__gallery-form[open] {
+  padding-bottom: 0.65rem;
+}
+
+.outfit-tryon__gallery-cta-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+}
+
+.outfit-tryon__limitations--compact {
+  margin-top: 0;
+}
+
+.outfit-tryon__dialog {
+  border: 1px solid var(--ot-line);
+  border-radius: var(--ot-radius);
+  padding: 0;
+  width: min(420px, 92vw);
+  background: #faf8f5;
+  color: var(--ot-ink);
+  font-family: var(--ot-font);
+}
+
+.outfit-tryon__dialog::backdrop {
+  background: rgba(28, 27, 26, 0.45);
+}
+
+.outfit-tryon__dialog-chrome {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+  padding: 0.75rem 0.9rem;
+  border-bottom: 1px solid var(--ot-line);
+  margin: 0;
+}
+
+.outfit-tryon__dialog-title {
+  font-size: 1rem;
+}
+
+.outfit-tryon__dialog-close {
+  appearance: none;
+  border: none;
+  background: transparent;
+  font-size: 1.35rem;
+  line-height: 1;
+  cursor: pointer;
+  color: var(--ot-muted);
+}
+
+.outfit-tryon__dialog .outfit-tryon__form {
+  padding: 0.85rem 0.9rem 1rem;
+}
+
+.outfit-gallery-tryon__shell {
+  width: 100%;
+  height: 100%;
+  min-height: 100%;
+}
+
+.outfit-gallery-tryon__slide,
+.outfit-gallery-tryon__grid-item {
+  --media-preview-ratio: 1;
+}
+
+.outfit-gallery-tryon__thumb {
+  display: grid !important;
+  place-items: center;
+  background:
+    linear-gradient(160deg, #f3eee6 0%, #e0d7ca 100%) !important;
+  border: 1px solid rgba(31, 75, 58, 0.35) !important;
+  overflow: hidden;
+}
+
+.outfit-gallery-tryon__thumb-label {
+  font-size: 0.7rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  color: #1f4b3a;
+  text-align: center;
+  padding: 0.25rem;
+  line-height: 1.2;
+}
+
+.outfit-gallery-tryon__adjacent {
+  margin: 1rem 0 0;
+  border: 1px solid #d9d2c8;
+  background: #faf8f5;
+}
+
+.outfit-gallery-tryon__adjacent-title {
+  margin: 0;
+  padding: 0.75rem 1rem 0;
+  font-size: 1.1rem;
+}
+
+.outfit-gallery-tryon__dawn-item,
+.outfit-gallery-tryon__thumb-item {
+  list-style: none;
+}
+
+@media (max-width: 600px) {
+  .outfit-tryon__field-row {
+    grid-template-columns: 1fr 1fr;
+  }
+}

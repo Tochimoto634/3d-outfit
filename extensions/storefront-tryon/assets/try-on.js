@@ -627,6 +627,9 @@
             Object.assign({}, body, { mannequin: tryOn.mannequin }),
             tryOn.asset,
           );
+          root.dispatchEvent(
+            new CustomEvent("outfit:tryon:ready", { bubbles: true }),
+          );
         } catch (e) {
           if (errorEl) {
             errorEl.hidden = false;
@@ -642,15 +645,19 @@
     }
   }
 
+  var libsPromise = null;
+
   async function boot() {
     var roots = document.querySelectorAll("[data-outfit-tryon]");
     if (!roots.length) return;
     try {
-      var libs = await ensureThree(roots);
+      if (!libsPromise) libsPromise = ensureThree(roots);
+      var libs = await libsPromise;
       roots.forEach(function (root) {
         bindRoot(root, libs);
       });
     } catch (e) {
+      libsPromise = null;
       roots.forEach(function (root) {
         var statusEl = root.querySelector("[data-tryon-status]");
         if (statusEl) {
@@ -661,12 +668,17 @@
     }
   }
 
+  window.OutfitTryOn = {
+    boot: boot,
+  };
+
   if (document.readyState === "loading") {
     document.addEventListener("DOMContentLoaded", boot);
   } else {
     boot();
   }
 
-  // Theme editor section reload
+  // Theme editor section reload + gallery slide injection
   document.addEventListener("shopify:section:load", boot);
+  document.addEventListener("outfit:tryon:boot", boot);
 })();

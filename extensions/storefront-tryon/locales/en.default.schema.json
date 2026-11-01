@@ -1,5 +1,20 @@
 {
-  "name": "3D try-on viewer",
+  "name": "3D try-on (standalone)",
+  "gallery_embed": {
+    "name": "Gallery last slide",
+    "settings": {
+      "enabled": {
+        "label": "Append a 3D try-on slide after product photos"
+      },
+      "form_mode": {
+        "label": "Body form presentation",
+        "options": {
+          "details": "Collapsible in the slide",
+          "modal": "Open in a modal"
+        }
+      }
+    }
+  },
   "settings": {
     "heading": {
       "label": "Heading"

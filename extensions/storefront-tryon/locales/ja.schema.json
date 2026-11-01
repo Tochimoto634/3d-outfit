@@ -1,5 +1,20 @@
 {
-  "name": "3D試着ビューア",
+  "name": "3D試着（単独ブロック）",
+  "gallery_embed": {
+    "name": "ギャラリー最終スライド",
+    "settings": {
+      "enabled": {
+        "label": "ギャラリー末尾に 3D試着スライドを追加"
+      },
+      "form_mode": {
+        "label": "体型フォームの表示",
+        "options": {
+          "details": "スライド内で折りたたみ",
+          "modal": "モーダルで開く"
+        }
+      }
+    }
+  },
   "settings": {
     "heading": {
       "label": "見出し"

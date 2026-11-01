@@ -1,6 +1,9 @@
 {
   "tryon": {
     "title_default": "3D試着",
-    "submit": "マネキンを作成して試着"
+    "submit": "マネキンを作成して試着",
+    "gallery_badge": "3D試着",
+    "open_form": "体型を入力して試着",
+    "form_summary": "体型を入力"
   }
 }

@@ -19,7 +19,7 @@ Shopify アパレル EC 向けの **3D 着用確認アプリ**（埋め込み Ad
 2. アプリが Admin API で画像・説明文・メタフィールドを収集し、サイズ表をヒューリスティック解析（スタブ）
 3. 運営者が確認・手動補正のうえ「確認して作成開始」
 4. RunPod へ **写真のみ** の生成ジョブを投入（この段階ではサイズ表は使わない）
-5. ストアフロント Theme App Block「3D試着」で体型入力 → マネキン → 360° 試着（GLB が無ければ布プロキシ）
+5. ストアフロントで体型入力 → マネキン → 360° 試着（GLB が無ければ布プロキシ）。Helio では App Embed「ギャラリー最終スライド」で商品写真の末尾に配置（単独 App Block はフォールバック）
 
 ## ローカル起動
 
@@ -61,7 +61,9 @@ shopify app dev
 - `/app/jobs/:id` — レビュー UI と「確認して作成開始」
 - `extensions/product-3d-create-link` — Admin Link（商品一覧の選択メニュー「3D作成」）
 - `extensions/product-3d-details-link` — Admin Link（商品詳細のその他のアクション）
-- `extensions/storefront-tryon` — Theme App Extension（商品ページ「3D試着」App Block）
+- `extensions/storefront-tryon` — Theme App Extension
+  - App Embed「ギャラリー最終スライド」（Helio / Horizon 系 `media-gallery` 末尾注入・推奨）
+  - App Block「3D試着（単独ブロック）」（任意フォールバック）
 - `/api/storefront/tryon` — CORS 試着 API（開発用）
 - `/api/proxy/tryon` — App Proxy（ストア `/apps/3d-outfit/tryon`）
 - `docs/storefront-tryon-api-base.md` — テーマエディタで API ベース URL に `shopify app dev` トンネルを入れる手順

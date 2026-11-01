@@ -19,9 +19,21 @@ const tryOnJsPath = path.join(
   root,
   "extensions/storefront-tryon/assets/try-on.js",
 );
+const galleryJsPath = path.join(
+  root,
+  "extensions/storefront-tryon/assets/gallery-tryon.js",
+);
 const liquidPath = path.join(
   root,
   "extensions/storefront-tryon/blocks/try-on.liquid",
+);
+const galleryEmbedPath = path.join(
+  root,
+  "extensions/storefront-tryon/blocks/gallery-tryon-embed.liquid",
+);
+const formFieldsPath = path.join(
+  root,
+  "extensions/storefront-tryon/snippets/try-on-form-fields.liquid",
 );
 
 const female = buildMannequinProportions({
@@ -72,9 +84,35 @@ assert.match(tryOnJs, /injectThreeImportMap/);
 const liquid = fs.readFileSync(liquidPath, "utf8");
 assert.match(liquid, /try-on-three\.bundle\.js/);
 assert.match(liquid, /data-three-bundle/);
+assert.match(liquid, /フォールバック|fallback|standalone/i);
+
+assert.ok(fs.existsSync(galleryJsPath), "gallery-tryon.js missing");
+assert.ok(fs.existsSync(galleryEmbedPath), "gallery-tryon-embed.liquid missing");
+assert.ok(fs.existsSync(formFieldsPath), "try-on-form-fields.liquid missing");
+
+const galleryJs = fs.readFileSync(galleryJsPath, "utf8");
+assert.match(galleryJs, /slideshow-slide/);
+assert.match(galleryJs, /media-gallery/);
+assert.match(galleryJs, /3D試着|outfit-3d-tryon/);
+
+const galleryEmbed = fs.readFileSync(galleryEmbedPath, "utf8");
+assert.match(galleryEmbed, /"target": "body"/);
+assert.match(galleryEmbed, /data-outfit-gallery-config/);
+assert.match(galleryEmbed, /gallery-tryon\.js/);
+assert.match(galleryEmbed, /3D試着/);
+
+const tryOnCss = fs.readFileSync(
+  path.join(root, "extensions/storefront-tryon/assets/try-on.css"),
+  "utf8",
+);
+assert.match(tryOnCss, /outfit-tryon--gallery/);
+
+assert.match(tryOnJs, /OutfitTryOn/);
+assert.match(tryOnJs, /outfit:tryon:boot|outfit:tryon:ready/);
 
 console.log("smoke:storefront-tryon OK", {
   femaleBmi: female.bmi,
   maleScale: male.overallScale,
   threeBundleBytes: fs.statSync(bundlePath).size,
+  galleryEmbed: true,
 });
