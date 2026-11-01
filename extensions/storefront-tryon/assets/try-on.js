@@ -297,20 +297,42 @@
 
     var bodyGlbCache = Object.create(null);
     var bodyLoadToken = 0;
-    // Public CDN fallback (TAE cannot host .glb; app-dev also rejected .glb).
-    // Pin updated on each body-mesh commit.
+    // Cache-bust + version marker for live verification.
+    var OUTFIT_BODY_ASSET_V = "16";
+    // jsDelivr only as last resort (Shopify CSP often blocks it → was
+    // causing silent capsule fallback on live Helio).
     var BODY_CDN_MALE =
-      "https://cdn.jsdelivr.net/gh/Tochimoto634/3d-outfit@3ea4dba/public/tryon/bodies/body-male.glb";
+      "https://cdn.jsdelivr.net/gh/Tochimoto634/3d-outfit@33ae5df/public/tryon/bodies/body-male.glb";
     var BODY_CDN_FEMALE =
-      "https://cdn.jsdelivr.net/gh/Tochimoto634/3d-outfit@3ea4dba/public/tryon/bodies/body-female.glb";
+      "https://cdn.jsdelivr.net/gh/Tochimoto634/3d-outfit@33ae5df/public/tryon/bodies/body-female.glb";
     var bodyDataReady = null;
+    // FORCE: never rebuild procedural capsules when MakeHuman assets exist.
+    var ALLOW_CAPSULE_FALLBACK = false;
+
+    function tryOnScriptBaseUrl() {
+      var nodes = document.querySelectorAll("script[src]");
+      for (var i = 0; i < nodes.length; i++) {
+        var src = nodes[i].getAttribute("src") || "";
+        if (/try-on\.js(\?|$)/.test(src)) {
+          return src.replace(/try-on\.js(\?.*)?$/, "");
+        }
+      }
+      return "";
+    }
+
+    function withCacheBust(url) {
+      if (!url) return url;
+      if (/[?&]v=/.test(url)) return url;
+      return url + (url.indexOf("?") >= 0 ? "&" : "?") + "v=" + OUTFIT_BODY_ASSET_V;
+    }
 
     function loadScriptOnce(url, marker) {
-      return new Promise(function (resolve, reject) {
+      return new Promise(function (resolve) {
         if (!url) {
           resolve(false);
           return;
         }
+        url = withCacheBust(url);
         if (marker && typeof window !== "undefined" && window[marker]) {
           resolve(true);
           return;
@@ -319,8 +341,12 @@
           'script[data-outfit-body-src="' + url + '"]',
         );
         if (existing) {
-          existing.addEventListener("load", function () {
+          if (marker && window[marker]) {
             resolve(true);
+            return;
+          }
+          existing.addEventListener("load", function () {
+            resolve(!!(marker ? window[marker] : true));
           });
           existing.addEventListener("error", function () {
             resolve(false);
@@ -329,10 +355,10 @@
         }
         var s = document.createElement("script");
         s.src = url;
-        s.async = true;
+        s.async = false;
         s.setAttribute("data-outfit-body-src", url);
         s.onload = function () {
-          resolve(true);
+          resolve(!!(marker ? window[marker] : true));
         };
         s.onerror = function () {
           resolve(false);
@@ -341,7 +367,10 @@
       });
     }
 
-    /** Ensure body-*-data.js globals exist when theme embed URLs are known. */
+    /**
+     * Load body-*-data.js from (1) embed config (2) page script tags
+     * (3) sibling of try-on.js on Shopify extension CDN — CSP-safe.
+     */
     function ensureBodyDataScripts() {
       if (bodyDataReady) return bodyDataReady;
       bodyDataReady = Promise.resolve().then(function () {
@@ -361,32 +390,46 @@
           cfgUrls.female ||
           root.getAttribute("data-body-female-data") ||
           "";
-        // Discover from page scripts if embed already injected them.
-        if (!maleSrc || !femaleSrc) {
-          var nodes = document.querySelectorAll("script[src]");
-          for (var i = 0; i < nodes.length; i++) {
-            var src = nodes[i].getAttribute("src") || "";
-            if (!maleSrc && /body-male-data\.js/.test(src)) maleSrc = src;
-            if (!femaleSrc && /body-female-data\.js/.test(src)) femaleSrc = src;
-          }
+        var nodes = document.querySelectorAll("script[src]");
+        for (var i = 0; i < nodes.length; i++) {
+          var src = nodes[i].getAttribute("src") || "";
+          if (!maleSrc && /body-male-data\.js/.test(src)) maleSrc = src;
+          if (!femaleSrc && /body-female-data\.js/.test(src)) femaleSrc = src;
+        }
+        // Sibling of this try-on.js on cdn.shopify.com/extensions/...
+        var base = tryOnScriptBaseUrl();
+        if (base) {
+          if (!maleSrc) maleSrc = base + "body-male-data.js";
+          if (!femaleSrc) femaleSrc = base + "body-female-data.js";
         }
         return Promise.all([
           loadScriptOnce(maleSrc, "__OutfitBodyMaleGlb"),
           loadScriptOnce(femaleSrc, "__OutfitBodyFemaleGlb"),
-        ]).then(function () {
-          return !!(
+        ]).then(function (results) {
+          var ok = !!(
             typeof window !== "undefined" &&
             (window.__OutfitBodyMaleGlb || window.__OutfitBodyFemaleGlb)
           );
+          try {
+            console.info("[outfit-tryon] body-data scripts", {
+              maleSrc: maleSrc,
+              femaleSrc: femaleSrc,
+              loaded: results,
+              hasMale: !!window.__OutfitBodyMaleGlb,
+              hasFemale: !!window.__OutfitBodyFemaleGlb,
+              v: OUTFIT_BODY_ASSET_V,
+            });
+          } catch (err) {
+            /* ignore */
+          }
+          return ok;
         });
       });
       return bodyDataReady;
     }
 
     function bodyUrlForGender(gender) {
-      // 1) theme-legal base64 data URLs from body-*-data.js
-      // 2) explicit data-body-* / config
-      // 3) jsDelivr GLB (always available, CORS OK)
+      // Prefer Shopify-hosted data URLs (CSP-safe). External CDN last.
       var maleEmbedded =
         typeof window !== "undefined" && window.__OutfitBodyMaleGlb
           ? window.__OutfitBodyMaleGlb
@@ -555,15 +598,22 @@
 
     function rebuildMannequin(p) {
       var token = ++bodyLoadToken;
-      function finish(source) {
+      function finish(source, detail) {
         root.__outfitBodySource = source;
+        root.__outfitBodyDetail = detail || null;
         try {
           root.setAttribute("data-body-source", source);
+          root.setAttribute("data-outfit-body-v", OUTFIT_BODY_ASSET_V);
         } catch (err) {
           /* ignore */
         }
         fitVisibleContent();
-        return { source: source };
+        try {
+          console.info("[outfit-tryon] body source =", source, detail || "");
+        } catch (err2) {
+          /* ignore */
+        }
+        return { source: source, detail: detail || null };
       }
       return ensureBodyDataScripts()
         .catch(function () {
@@ -572,31 +622,47 @@
         .then(function () {
           var url = bodyUrlForGender(p.gender);
           if (!url) {
-            rebuildCapsuleMannequin(p);
-            return finish("capsule");
+            clearMannequin();
+            return finish(
+              "error-no-url",
+              "MakeHuman body URL missing (v" + OUTFIT_BODY_ASSET_V + ")",
+            );
           }
-          return loadBodyGltf(url)
-            .then(function (gltf) {
+          var triedCdn = false;
+          function tryLoad(u, label) {
+            return loadBodyGltf(u).then(function (gltf) {
               if (token !== bodyLoadToken) return { source: "stale" };
               mountMakeHumanBody(gltf, p);
-              return finish("makehuman");
-            })
-            .catch(function (err1) {
-              // If embedded data URL failed, force CDN GLB once.
-              var cdn =
-                p.gender === "female" ? BODY_CDN_FEMALE : BODY_CDN_MALE;
-              if (!cdn || cdn === url) throw err1;
-              return loadBodyGltf(cdn).then(function (gltf) {
-                if (token !== bodyLoadToken) return { source: "stale" };
-                mountMakeHumanBody(gltf, p);
-                return finish("makehuman-cdn");
-              });
-            })
-            .catch(function () {
-              if (token !== bodyLoadToken) return { source: "stale" };
-              rebuildCapsuleMannequin(p);
-              return finish("capsule-fallback");
+              return finish(label, u.slice(0, 64));
             });
+          }
+          return tryLoad(
+            url,
+            String(url).indexOf("data:") === 0 ? "makehuman" : "makehuman-cdn",
+          ).catch(function (err1) {
+            var cdn =
+              p.gender === "female" ? BODY_CDN_FEMALE : BODY_CDN_MALE;
+            if (!cdn || cdn === url) throw err1;
+            triedCdn = true;
+            return tryLoad(cdn, "makehuman-cdn");
+          }).catch(function (err2) {
+            if (token !== bodyLoadToken) return { source: "stale" };
+            clearMannequin();
+            if (ALLOW_CAPSULE_FALLBACK) {
+              rebuildCapsuleMannequin(p);
+              return finish("capsule-fallback", String(err2 && err2.message));
+            }
+            // FORCE: never show capsules on live — empty + error status.
+            return finish(
+              "error-load",
+              "MakeHuman load failed (v" +
+                OUTFIT_BODY_ASSET_V +
+                "; cdnTried=" +
+                triedCdn +
+                "): " +
+                String((err2 && err2.message) || err2),
+            );
+          });
         });
     }
 
@@ -905,6 +971,16 @@
         syncLayerButtons();
         this.hideOverlay();
         resizeWhenVisible();
+        if (
+          bodyResult &&
+          bodyResult.source &&
+          String(bodyResult.source).indexOf("error") === 0
+        ) {
+          this.setStatus(
+            "人体モデルの読み込みに失敗しました（v16）。" +
+              (bodyResult.detail ? " " + bodyResult.detail : ""),
+          );
+        }
         if (asset && asset.storageUrl) {
           this.setStatus("服 3D を読み込み中…");
           var loaded = await loadGarmentGlb(asset.storageUrl, p);
@@ -920,7 +996,11 @@
             bodyResult.source &&
             String(bodyResult.source).indexOf("makehuman") === 0
               ? "MakeHuman系人体 + "
-              : "";
+              : bodyResult &&
+                  bodyResult.source &&
+                  String(bodyResult.source).indexOf("error") === 0
+                ? "人体未読込 + "
+                : "";
           this.setStatus(
             bodyNote +
               "布プロキシで試着プレビューしています（TRELLIS 未接続）。",

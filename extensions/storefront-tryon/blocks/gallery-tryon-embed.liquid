@@ -123,10 +123,11 @@
     </div>
   </template>
 
-  <script src="{{ 'body-male-data.js' | asset_url }}" defer></script>
-  <script src="{{ 'body-female-data.js' | asset_url }}" defer></script>
-  <script src="{{ 'try-on.js' | asset_url }}" defer></script>
-  <script src="{{ 'gallery-tryon.js' | asset_url }}" defer></script>
+  {% comment %} v16 cache-bust — force MakeHuman body-data + try-on reload {% endcomment %}
+  <script src="{{ 'body-male-data.js' | asset_url | append: '&v=16mh' }}" defer></script>
+  <script src="{{ 'body-female-data.js' | asset_url | append: '&v=16mh' }}" defer></script>
+  <script src="{{ 'try-on.js' | asset_url | append: '&v=16mh' }}" defer></script>
+  <script src="{{ 'gallery-tryon.js' | asset_url | append: '&v=16mh' }}" defer></script>
 {% endif %}
 
 {% schema %}

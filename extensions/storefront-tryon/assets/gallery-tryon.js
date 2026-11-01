@@ -6,6 +6,36 @@
   "use strict";
 
   var MARK = "data-outfit-gallery-injected";
+  // Eager-load MakeHuman body data (Shopify CDN siblings / config).
+  (function preloadBodyData() {
+    function add(url) {
+      if (!url || document.querySelector('script[data-outfit-body-src="' + url + '"]')) return;
+      var s = document.createElement("script");
+      s.src = url.indexOf("v=") >= 0 ? url : url + (url.indexOf("?") >= 0 ? "&" : "?") + "v=16mh";
+      s.async = true;
+      s.setAttribute("data-outfit-body-src", s.src);
+      document.head.appendChild(s);
+    }
+    try {
+      var cfgNode = document.querySelector("[data-outfit-gallery-config]");
+      if (cfgNode) {
+        var cfg = JSON.parse(cfgNode.textContent || "{}");
+        if (cfg.bodyMaleData) add(cfg.bodyMaleData);
+        if (cfg.bodyFemaleData) add(cfg.bodyFemaleData);
+      }
+    } catch (e) {}
+    var nodes = document.querySelectorAll("script[src]");
+    for (var i = 0; i < nodes.length; i++) {
+      var src = nodes[i].getAttribute("src") || "";
+      if (/try-on\.js/.test(src)) {
+        var base = src.replace(/try-on\.js.*/, "");
+        add(base + "body-male-data.js");
+        add(base + "body-female-data.js");
+        break;
+      }
+    }
+  })();
+
   var SLIDE_ID = "outfit-3d-tryon";
   var bootTimer = 0;
 
