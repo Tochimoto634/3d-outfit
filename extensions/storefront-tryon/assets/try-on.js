@@ -127,8 +127,9 @@
 
     var scene = new THREE.Scene();
     var camera = new THREE.PerspectiveCamera(35, 1, 0.05, 50);
-    // Auto-fit visible content to ~75% of the viewport (no fixed 150% scale).
-    var FIT_FILL = 0.75;
+    // Auto-fit: product-only ~75% of shorter axis; body (±garment) ~50%.
+    var FIT_FILL_PRODUCT = 0.75;
+    var FIT_FILL_BODY = 0.5;
     camera.position.set(0, 1.1, 2.8);
 
     var controls = new OrbitControls(camera, canvas);
@@ -390,8 +391,9 @@
     }
 
     /**
-     * Auto-frame currently visible meshes so they fill ~FIT_FILL of the
-     * viewport. Prefer a slightly upper-body look-at when the body is shown.
+     * Auto-frame visible meshes:
+     * - product-only → ~75% of the shorter viewport axis
+     * - body alone / body+garment → ~50% (upper-body-ish crop)
      */
     function fitVisibleContent() {
       turntable.updateMatrixWorld(true);
@@ -414,27 +416,32 @@
       if (!(size.x > 0) || !(size.y > 0)) return;
 
       var bodyOn = mannequinGroup.visible && mannequinGroup.children.length > 0;
-      // When body is shown, fit the upper ~72% (mid-thigh→head) so framing
-      // reads upper-body-ish while the subject fills ~75% of the viewport.
-      if (bodyOn) {
-        var fullH = size.y;
-        box.min.y = box.min.y + fullH * 0.28;
-        box.getSize(size);
-        box.getCenter(center);
-      }
+      var rawX = size.x;
+      var rawY = size.y;
 
-      // Keep look-at near box center (slight lift) so fill math matches framing.
-      var targetY = center.y + size.y * 0.04;
+      // Body modes: look slightly upper-body, but distance uses FULL visible
+      // AABB so fill % matches what the user actually sees.
+      var targetY = bodyOn ? box.min.y + size.y * 0.62 : center.y;
 
       var vFov = (camera.fov * Math.PI) / 180;
       var aspect = Math.max(camera.aspect || 1, 0.01);
       var hFov = 2 * Math.atan(Math.tan(vFov / 2) * aspect);
-      var fill = FIT_FILL;
-      var distH = size.y / (2 * fill * Math.tan(vFov / 2));
-      var distW = size.x / (2 * fill * Math.tan(hFov / 2));
-      var distD = Math.max(size.z, 0.01) / (2 * fill * Math.tan(hFov / 2));
-      // Fit-inside: dominant axis ≈ 75% of viewport (no edge-to-edge overflow).
-      var dist = Math.max(distH, distW, distD, 0.85);
+      var shortFov = aspect >= 1 ? vFov : hFov;
+      var fill = bodyOn ? FIT_FILL_BODY : FIT_FILL_PRODUCT;
+
+      var dist;
+      if (!bodyOn) {
+        // Product-only: fit-inside on shorter axis at ~75% (sleeves shortened
+        // so AABB matches the visible garment).
+        var distH = rawY / (2 * fill * Math.tan(shortFov / 2));
+        var distW = rawX / (2 * fill * Math.tan(shortFov / 2));
+        dist = Math.max(distH, distW);
+      } else {
+        var distHBody = rawY / (2 * fill * Math.tan(shortFov / 2));
+        var distWBody = rawX / (2 * fill * Math.tan(shortFov / 2));
+        dist = Math.max(distHBody, distWBody);
+      }
+      dist = Math.max(dist, 0.55);
 
       var yaw = controls.getAzimuthalAngle();
       controls.target.set(center.x, targetY, center.z);
@@ -491,14 +498,19 @@
       shirt.position.y = legH + torsoH * 0.5;
       garmentGroup.add(shirt);
 
-      // simple sleeves
+      // Short sleeves — long cylinders inflated product-only AABB / framing.
       [-1, 1].forEach(function (side) {
         var sleeve = new THREE.Mesh(
-          new THREE.CylinderGeometry(0.06 * p.limbThickness, 0.05 * p.limbThickness, 0.22 * s, 12),
+          new THREE.CylinderGeometry(
+            0.055 * p.limbThickness,
+            0.048 * p.limbThickness,
+            0.14 * s,
+            12,
+          ),
           clothMat,
         );
-        sleeve.position.set(side * 0.22 * p.shoulderScale, legH + torsoH * 0.72, 0);
-        sleeve.rotation.z = side * (Math.PI / 2.4);
+        sleeve.position.set(side * 0.2 * p.shoulderScale, legH + torsoH * 0.72, 0);
+        sleeve.rotation.z = side * (Math.PI / 2.35);
         garmentGroup.add(sleeve);
       });
 
