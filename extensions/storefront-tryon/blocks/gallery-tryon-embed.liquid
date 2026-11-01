@@ -123,11 +123,11 @@
     </div>
   </template>
 
-  {% comment %} v17 cache-bust — restore models; MakeHuman preferred, capsule last resort {% endcomment %}
-  <script src="{{ 'body-male-data.js' | asset_url | append: '&v=17restore' }}" defer></script>
-  <script src="{{ 'body-female-data.js' | asset_url | append: '&v=17restore' }}" defer></script>
-  <script src="{{ 'try-on.js' | asset_url | append: '&v=17restore' }}" defer></script>
-  <script src="{{ 'gallery-tryon.js' | asset_url | append: '&v=17restore' }}" defer></script>
+  {% comment %} v18 — fetch+Blob MakeHuman body-data from Shopify CDN {% endcomment %}
+  <script src="{{ 'body-male-data.js' | asset_url | append: '&v=18mh' }}" defer></script>
+  <script src="{{ 'body-female-data.js' | asset_url | append: '&v=18mh' }}" defer></script>
+  <script src="{{ 'try-on.js' | asset_url | append: '&v=18mh' }}" defer></script>
+  <script src="{{ 'gallery-tryon.js' | asset_url | append: '&v=18mh' }}" defer></script>
 {% endif %}
 
 {% schema %}

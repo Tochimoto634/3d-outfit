@@ -297,16 +297,22 @@
 
     var bodyGlbCache = Object.create(null);
     var bodyLoadToken = 0;
-    // Cache-bust + version marker for live verification.
-    var OUTFIT_BODY_ASSET_V = "17";
-    // jsDelivr only as last resort (Shopify CSP often blocks it).
+    // Cache-bust + version marker — must appear in live status / data attrs.
+    var OUTFIT_BODY_ASSET_V = "18";
     var BODY_CDN_MALE =
-      "https://cdn.jsdelivr.net/gh/Tochimoto634/3d-outfit@1430cc5/public/tryon/bodies/body-male.glb";
+      "https://cdn.jsdelivr.net/gh/Tochimoto634/3d-outfit@449b1d1/public/tryon/bodies/body-male.glb";
     var BODY_CDN_FEMALE =
-      "https://cdn.jsdelivr.net/gh/Tochimoto634/3d-outfit@1430cc5/public/tryon/bodies/body-female.glb";
+      "https://cdn.jsdelivr.net/gh/Tochimoto634/3d-outfit@449b1d1/public/tryon/bodies/body-female.glb";
     var bodyDataReady = null;
-    // Capsule OK as LAST RESORT only (visible status). Prefer MakeHuman.
+    // Capsule only after MakeHuman fails — never silent (status always names it).
     var ALLOW_CAPSULE_FALLBACK = true;
+
+    try {
+      root.setAttribute("data-outfit-body-v", OUTFIT_BODY_ASSET_V);
+      root.__outfitTryOnBuild = OUTFIT_BODY_ASSET_V;
+    } catch (errBoot) {
+      /* ignore */
+    }
 
     function tryOnScriptBaseUrl() {
       var nodes = document.querySelectorAll("script[src]");
@@ -325,99 +331,120 @@
       return url + (url.indexOf("?") >= 0 ? "&" : "?") + "v=" + OUTFIT_BODY_ASSET_V;
     }
 
-    function loadScriptOnce(url, marker) {
-      return new Promise(function (resolve) {
-        if (!url) {
-          resolve(false);
-          return;
-        }
-        url = withCacheBust(url);
-        if (marker && typeof window !== "undefined" && window[marker]) {
-          resolve(true);
-          return;
-        }
-        var existing = document.querySelector(
-          'script[data-outfit-body-src="' + url + '"]',
-        );
-        if (existing) {
-          if (marker && window[marker]) {
-            resolve(true);
-            return;
-          }
-          existing.addEventListener("load", function () {
-            resolve(!!(marker ? window[marker] : true));
-          });
-          existing.addEventListener("error", function () {
-            resolve(false);
-          });
-          return;
-        }
-        var s = document.createElement("script");
-        s.src = url;
-        s.async = false;
-        s.setAttribute("data-outfit-body-src", url);
-        s.onload = function () {
-          resolve(!!(marker ? window[marker] : true));
-        };
-        s.onerror = function () {
-          resolve(false);
-        };
-        document.head.appendChild(s);
-      });
+    /** Large data: URLs break GLTFLoader — use Blob object URLs instead. */
+    function toLoaderUrl(url) {
+      if (!url || String(url).indexOf("data:") !== 0) return url;
+      try {
+        var parts = String(url).split(",");
+        var meta = parts[0] || "";
+        var b64 = parts.slice(1).join(",");
+        var bin = atob(b64);
+        var bytes = new Uint8Array(bin.length);
+        for (var i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+        var mime = "model/gltf-binary";
+        var m = /data:([^;,]+)/.exec(meta);
+        if (m && m[1]) mime = m[1];
+        return URL.createObjectURL(new Blob([bytes], { type: mime }));
+      } catch (err) {
+        return url;
+      }
     }
 
     /**
-     * Load body-*-data.js from (1) embed config (2) page script tags
-     * (3) sibling of try-on.js on Shopify extension CDN — CSP-safe.
+     * fetch() body-*-data.js from Shopify extension CDN (same origin as
+     * try-on.js → CSP-safe), then eval to set window.__OutfitBody*Glb.
+     * More reliable than <script defer> on Helio.
      */
+    function fetchBodyDataFile(url, marker) {
+      return new Promise(function (resolve) {
+        if (!url) {
+          resolve({ ok: false, status: 0, url: url });
+          return;
+        }
+        if (marker && window[marker]) {
+          resolve({ ok: true, status: 200, url: url, cached: true });
+          return;
+        }
+        url = withCacheBust(url);
+        fetch(url, { credentials: "omit", mode: "cors", cache: "no-cache" })
+          .then(function (res) {
+            if (!res.ok) {
+              resolve({ ok: false, status: res.status, url: url });
+              return null;
+            }
+            return res.text().then(function (text) {
+              try {
+                // body-*-data.js is an IIFE assigning window.__OutfitBody*Glb
+                (0, eval)(text);
+              } catch (errEval) {
+                resolve({
+                  ok: false,
+                  status: res.status,
+                  url: url,
+                  evalError: String(errEval && errEval.message),
+                });
+                return;
+              }
+              resolve({
+                ok: !!(marker ? window[marker] : true),
+                status: res.status,
+                url: url,
+                bytes: text.length,
+              });
+            });
+          })
+          .catch(function (err) {
+            resolve({
+              ok: false,
+              status: 0,
+              url: url,
+              fetchError: String(err && err.message),
+            });
+          });
+      });
+    }
+
+    function resolveBodyDataSrcs() {
+      var cfgUrls = root.__outfitBodyDataUrls || {};
+      var maleSrc =
+        cfgUrls.male || root.getAttribute("data-body-male-data") || "";
+      var femaleSrc =
+        cfgUrls.female || root.getAttribute("data-body-female-data") || "";
+      var nodes = document.querySelectorAll("script[src]");
+      for (var i = 0; i < nodes.length; i++) {
+        var src = nodes[i].getAttribute("src") || "";
+        if (!maleSrc && /body-male-data\.js/.test(src)) maleSrc = src;
+        if (!femaleSrc && /body-female-data\.js/.test(src)) femaleSrc = src;
+      }
+      var base = tryOnScriptBaseUrl();
+      if (base) {
+        if (!maleSrc) maleSrc = base + "body-male-data.js";
+        if (!femaleSrc) femaleSrc = base + "body-female-data.js";
+      }
+      return { maleSrc: maleSrc, femaleSrc: femaleSrc, base: base };
+    }
+
     function ensureBodyDataScripts() {
       if (bodyDataReady) return bodyDataReady;
       bodyDataReady = Promise.resolve().then(function () {
-        if (
-          typeof window !== "undefined" &&
-          window.__OutfitBodyMaleGlb &&
-          window.__OutfitBodyFemaleGlb
-        ) {
+        if (window.__OutfitBodyMaleGlb && window.__OutfitBodyFemaleGlb) {
           return true;
         }
-        var cfgUrls = root.__outfitBodyDataUrls || {};
-        var maleSrc =
-          cfgUrls.male ||
-          root.getAttribute("data-body-male-data") ||
-          "";
-        var femaleSrc =
-          cfgUrls.female ||
-          root.getAttribute("data-body-female-data") ||
-          "";
-        var nodes = document.querySelectorAll("script[src]");
-        for (var i = 0; i < nodes.length; i++) {
-          var src = nodes[i].getAttribute("src") || "";
-          if (!maleSrc && /body-male-data\.js/.test(src)) maleSrc = src;
-          if (!femaleSrc && /body-female-data\.js/.test(src)) femaleSrc = src;
-        }
-        // Sibling of this try-on.js on cdn.shopify.com/extensions/...
-        var base = tryOnScriptBaseUrl();
-        if (base) {
-          if (!maleSrc) maleSrc = base + "body-male-data.js";
-          if (!femaleSrc) femaleSrc = base + "body-female-data.js";
-        }
+        var srcs = resolveBodyDataSrcs();
         return Promise.all([
-          loadScriptOnce(maleSrc, "__OutfitBodyMaleGlb"),
-          loadScriptOnce(femaleSrc, "__OutfitBodyFemaleGlb"),
+          fetchBodyDataFile(srcs.maleSrc, "__OutfitBodyMaleGlb"),
+          fetchBodyDataFile(srcs.femaleSrc, "__OutfitBodyFemaleGlb"),
         ]).then(function (results) {
-          var ok = !!(
-            typeof window !== "undefined" &&
-            (window.__OutfitBodyMaleGlb || window.__OutfitBodyFemaleGlb)
-          );
+          var ok = !!(window.__OutfitBodyMaleGlb || window.__OutfitBodyFemaleGlb);
+          root.__outfitBodyFetch = {
+            v: OUTFIT_BODY_ASSET_V,
+            srcs: srcs,
+            results: results,
+            hasMale: !!window.__OutfitBodyMaleGlb,
+            hasFemale: !!window.__OutfitBodyFemaleGlb,
+          };
           try {
-            console.info("[outfit-tryon] body-data scripts", {
-              maleSrc: maleSrc,
-              femaleSrc: femaleSrc,
-              loaded: results,
-              hasMale: !!window.__OutfitBodyMaleGlb,
-              hasFemale: !!window.__OutfitBodyFemaleGlb,
-              v: OUTFIT_BODY_ASSET_V,
-            });
+            console.info("[outfit-tryon] body-data fetch", root.__outfitBodyFetch);
           } catch (err) {
             /* ignore */
           }
@@ -428,25 +455,22 @@
     }
 
     function bodyUrlForGender(gender) {
-      // Prefer Shopify-hosted data URLs (CSP-safe). External CDN last.
-      var maleEmbedded =
-        typeof window !== "undefined" && window.__OutfitBodyMaleGlb
-          ? window.__OutfitBodyMaleGlb
-          : "";
-      var femaleEmbedded =
-        typeof window !== "undefined" && window.__OutfitBodyFemaleGlb
-          ? window.__OutfitBodyFemaleGlb
-          : "";
+      var maleEmbedded = window.__OutfitBodyMaleGlb || "";
+      var femaleEmbedded = window.__OutfitBodyFemaleGlb || "";
+      // Prefer Shopify-hosted embedded GLB data URLs only (no jsDelivr first).
       var male =
         maleEmbedded ||
         root.getAttribute("data-body-male") ||
         (root.__outfitBodyUrls && root.__outfitBodyUrls.male) ||
-        BODY_CDN_MALE;
+        "";
       var female =
         femaleEmbedded ||
         root.getAttribute("data-body-female") ||
         (root.__outfitBodyUrls && root.__outfitBodyUrls.female) ||
-        BODY_CDN_FEMALE;
+        "";
+      // External CDN absolute last (often CSP-blocked on Shopify).
+      if (!male) male = BODY_CDN_MALE;
+      if (!female) female = BODY_CDN_FEMALE;
       if (gender === "female") return female || male;
       return male || female;
     }
@@ -533,16 +557,19 @@
 
     function loadBodyGltf(url) {
       if (bodyGlbCache[url]) return Promise.resolve(bodyGlbCache[url]);
+      var loaderUrl = toLoaderUrl(url);
       return new Promise(function (resolve, reject) {
         var loader = new GLTFLoader();
         loader.load(
-          url,
+          loaderUrl,
           function (gltf) {
             bodyGlbCache[url] = gltf;
             resolve(gltf);
           },
           undefined,
-          reject,
+          function (err) {
+            reject(err || new Error("GLTFLoader failed"));
+          },
         );
       });
     }
@@ -992,23 +1019,25 @@
         garmentGroup.visible = true;
         syncLayerButtons();
         var src = (bodyResult && bodyResult.source) || "";
+        var tag = " [tryon v" + OUTFIT_BODY_ASSET_V + "]";
         if (String(src).indexOf("makehuman") === 0) {
           this.setStatus(
-            "MakeHuman系人体 + 布プロキシで試着プレビューしています（TRELLIS 未接続）。",
+            "MakeHuman系人体 + 布プロキシで試着プレビューしています。" + tag,
           );
         } else if (src === "capsule-fallback") {
           this.setStatus(
-            "簡易マネキン（MakeHuman未読込の代替）+ 布プロキシで表示中。",
+            "⚠ MakeHuman未読込のため簡易マネキンで代替表示中。" +
+              tag +
+              (bodyResult.detail ? " " + bodyResult.detail : ""),
           );
         } else if (String(src).indexOf("error") === 0) {
           this.setStatus(
             "人体の読み込みに失敗。商品メッシュのみ表示中。" +
+              tag +
               (bodyResult.detail ? " " + bodyResult.detail : ""),
           );
         } else {
-          this.setStatus(
-            "布プロキシで試着プレビューしています（TRELLIS 未接続）。",
-          );
+          this.setStatus("布プロキシで試着プレビューしています。" + tag);
         }
         resizeWhenVisible();
         fitVisibleContent();
@@ -1303,21 +1332,45 @@
           );
         } else if (tryOn && tryOn._offline) {
           viewer.setStatus(
-            root.__outfitBodySource === "capsule-fallback"
-              ? "簡易マネキン（代替）+ API 未接続のため布プロキシで表示中。"
-              : root.__outfitBodySource &&
-                  String(root.__outfitBodySource).indexOf("makehuman") === 0
-                ? "MakeHuman系人体 + API 未接続のため布プロキシで試着プレビューしています。"
-                : "API 未接続のため布プロキシで試着プレビューしています。",
+            (function () {
+              var ver =
+                root.__outfitTryOnBuild ||
+                root.getAttribute("data-outfit-body-v") ||
+                "?";
+              var tag = " [tryon v" + ver + "]";
+              var s = root.__outfitBodySource || "";
+              if (s === "capsule-fallback") {
+                return "⚠ MakeHuman未読込のため簡易マネキンで代替表示中。" + tag;
+              }
+              if (String(s).indexOf("makehuman") === 0) {
+                return (
+                  "MakeHuman系人体 + API 未接続のため布プロキシで試着プレビューしています。" +
+                  tag
+                );
+              }
+              return "API 未接続のため布プロキシで試着プレビューしています。" + tag;
+            })(),
           );
         } else {
           viewer.setStatus(
-            root.__outfitBodySource === "capsule-fallback"
-              ? "簡易マネキン（代替）+ 実 GLB 無しの布プロキシ表示中。"
-              : root.__outfitBodySource &&
-                  String(root.__outfitBodySource).indexOf("makehuman") === 0
-                ? "MakeHuman系人体 + 実 GLB が無いため布プロキシで試着プレビューしています。"
-                : "実 GLB が無いため布プロキシで試着プレビューしています。",
+            (function () {
+              var ver =
+                root.__outfitTryOnBuild ||
+                root.getAttribute("data-outfit-body-v") ||
+                "?";
+              var tag = " [tryon v" + ver + "]";
+              var s = root.__outfitBodySource || "";
+              if (s === "capsule-fallback") {
+                return "⚠ MakeHuman未読込のため簡易マネキンで代替表示中。" + tag;
+              }
+              if (String(s).indexOf("makehuman") === 0) {
+                return (
+                  "MakeHuman系人体 + 実 GLB が無いため布プロキシで試着プレビューしています。" +
+                  tag
+                );
+              }
+              return "実 GLB が無いため布プロキシで試着プレビューしています。" + tag;
+            })(),
           );
         }
       } catch (e) {

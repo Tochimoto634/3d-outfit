@@ -11,7 +11,7 @@
     function add(url) {
       if (!url || document.querySelector('script[data-outfit-body-src="' + url + '"]')) return;
       var s = document.createElement("script");
-      s.src = url.indexOf("v=") >= 0 ? url : url + (url.indexOf("?") >= 0 ? "&" : "?") + "v=17restore";
+      s.src = url.indexOf("v=") >= 0 ? url : url + (url.indexOf("?") >= 0 ? "&" : "?") + "v=18mh";
       s.async = true;
       s.setAttribute("data-outfit-body-src", s.src);
       document.head.appendChild(s);
