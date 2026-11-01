@@ -49,9 +49,11 @@ shopify app dev
 | `RUNPOD_API_KEY` | 未設定時は **モックモード** |
 | `RUNPOD_ENDPOINT_ID` | **新規** ComfyUI+TRELLIS.2 Endpoint の ID（別プロジェクトの既存 Endpoint は使わない） |
 | `RUNPOD_API_BASE` | 省略時 `https://api.runpod.ai/v2` |
+| `RUNPOD_FORCE_MOCK` / `RUNPOD_DRY_RUN` | `1` で強制モック / POST なし dry-run |
 | `RUNPOD_WORKFLOW_PATH` / `RUNPOD_WORKFLOW_JSON` | ComfyUI グラフ JSON（省略時 `config/runpod-trellis-workflow.json`） |
 
-セットアップ手順の詳細はプロジェクト Context の `docs/runpod-setup.md` を参照。ローカル確認: `npm run smoke:runpod`。
+ライブ接続（Admin 3D作成 → Asset3D → try-on）: `docs/runpod-live-connect.md`。  
+セットアップ詳細: `docs/runpod-setup.md`。確認: `npm run dry-run:runpod` → `npm run smoke:runpod`。
 
 ## 主なパス
 

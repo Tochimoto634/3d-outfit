@@ -1,8 +1,9 @@
 # 試着服 3D アセットパイプライン（TO-46）
 
 **日付:** 2026-11-01  
-**バッジ:** tryon **v23-GARM**  
-**PR:** [#12](https://github.com/Tochimoto634/3d-outfit/pull/12)
+**バッジ:** tryon **v23-GARM2**  
+**PR:** [#12](https://github.com/Tochimoto634/3d-outfit/pull/12)  
+**Live connect:** [runpod-live-connect.md](./runpod-live-connect.md)
 
 ## 現状フロー
 
@@ -42,11 +43,13 @@ Admin「3D作成」
 
 ## 次の手（本番）
 
-1. `RUNPOD_API_KEY` + Comfy/TRELLIS workflow that emits `glb_url`
-2. Object storage for durable Asset3D URLs (not ephemeral RunPod links)
-3. Replace sample-tee with product-specific TRELLIS meshes
+1. User secrets: `RUNPOD_API_KEY` + `RUNPOD_ENDPOINT_ID` in `.env` (see `runpod-live-connect.md`)
+2. Replace placeholder Comfy/TRELLIS workflow so worker emits `glb_url`
+3. Object storage for durable Asset3D URLs (not ephemeral RunPod links)
 4. True garment fit / skinning (current: bbox scale onto chest)
+
+Dry-run first: `npm run dry-run:runpod` (no GPU spend). Live ping optional: `npm run dry-run:runpod -- --live-ping`.
 
 ## Helio
 
-Theme-hosted restore remains the live path. Badge `tryon v23-GARM`. Hard-reload product → 3D試着; status should mention サンプル服 or 生成ジョブ GLB (not only 布プロキシ).
+Theme-hosted restore remains the live path. Badge `tryon v23-GARM2`. Hard-reload product → 3D試着; status should mention サンプル服 or 生成ジョブ GLB (not only 布プロキシ).
