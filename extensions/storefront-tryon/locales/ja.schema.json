@@ -1,5 +1,13 @@
 {
-  "name": "3D試着ビューア",
+  "name": "3D試着（単独ブロック）",
+  "gallery_embed": {
+    "name": "ギャラリー最終スライド",
+    "settings": {
+      "enabled": {
+        "label": "ギャラリー末尾に 3D試着スライドを追加"
+      }
+    }
+  },
   "settings": {
     "heading": {
       "label": "見出し"
@@ -10,9 +18,6 @@
     "api_base_url": {
       "label": "API ベース URL（任意・開発用）",
       "info": "通常は空欄で OK（App Proxy /apps/3d-outfit/tryon）。テーマエディタプレビューで接続できないときだけ、`shopify app dev` が表示する https://….trycloudflare.com などのトンネル URL（末尾スラッシュなし）を貼り付けてください。"
-    },
-    "auto_rotate": {
-      "label": "初期状態で自動回転"
     },
     "garment_color": {
       "label": "布プロキシの色"

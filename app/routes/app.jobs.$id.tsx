@@ -376,11 +376,26 @@ export default function GenerationJobPage() {
       <s-stack direction="block" gap="base">
         <s-banner tone={job.status === "failed" ? "critical" : "info"}>
           ステータス: <s-text type="strong">{job.status}</s-text>
-          {runpodMock
-            ? " ／ RunPod: モックモード（APIキー未設定）"
-            : " ／ RunPod: ライブ設定あり"}
+          {runpod.liveReady
+            ? " ／ RunPod: ライブ準備OK（作成→ポーリングで Asset3D.storageUrl）"
+            : runpod.dryRun
+              ? " ／ RunPod: DRY_RUN（POST なし）"
+              : runpodMock
+                ? " ／ RunPod: モック（APIキー未設定 or FORCE_MOCK）"
+                : " ／ RunPod: キーあり・ENDPOINT 要確認"}
           {runpod.endpointIdConfigured ? "" : " ／ ENDPOINT_ID 未設定"}
+          {runpod.placeholderNodes
+            ? " ／ ワークフローがプレースホルダ（glb_url が出ない可能性）"
+            : ""}
         </s-banner>
+        {!runpod.liveReady && runpod.nextStep ? (
+          <s-banner tone="warning">
+            RunPod 接続: {runpod.nextStep}
+            {runpod.blockers?.length
+              ? `（blockers: ${runpod.blockers.join(", ")}）`
+              : ""}
+          </s-banner>
+        ) : null}
 
         {actionData &&
         "intent" in actionData &&

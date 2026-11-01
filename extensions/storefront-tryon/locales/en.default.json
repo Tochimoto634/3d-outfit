@@ -1,6 +1,9 @@
 {
   "tryon": {
     "title_default": "3D try-on",
-    "submit": "Create mannequin and try on"
+    "submit": "Create mannequin and try on",
+    "gallery_badge": "3D try-on",
+    "open_form": "Enter body measurements",
+    "form_summary": "Body measurements"
   }
 }

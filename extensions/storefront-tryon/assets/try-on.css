@@ -4,7 +4,7 @@
   --ot-muted: #5c5854;
   --ot-line: #d9d2c8;
   --ot-accent: #1f4b3a;
-  --ot-stage: #e8e2d8;
+  --ot-stage: #fafafa;
   --ot-radius: 4px;
   --ot-font: "Hiragino Sans", "Noto Sans JP", "Yu Gothic", sans-serif;
   box-sizing: border-box;
@@ -143,17 +143,20 @@
   width: 100%;
   aspect-ratio: 1 / 1;
   max-height: 520px;
-  background:
-    linear-gradient(180deg, #f3eee6 0%, var(--ot-stage) 55%, #d8d0c4 100%);
-  border: 1px solid var(--ot-line);
+  /* SSENSE-like seamless studio — neutral off-white, no beige stage gradient */
+  background: var(--ot-stage);
+  border: 1px solid #e4e4e4;
   overflow: hidden;
-  touch-action: none;
 }
 
 .outfit-tryon__canvas-wrap canvas {
   display: block;
+  position: relative;
+  z-index: 1;
   width: 100% !important;
   height: 100% !important;
+  /* Orbit only — do not put touch-action:none on the wrap (blocks drawer inputs). */
+  touch-action: none;
 }
 
 .outfit-tryon__overlay {
@@ -164,8 +167,8 @@
   justify-content: center;
   padding: 1.5rem;
   text-align: center;
-  color: var(--ot-muted);
-  background: rgba(246, 244, 241, 0.72);
+  color: #6b6b6b;
+  background: rgba(250, 250, 250, 0.82);
   font-size: 0.95rem;
   line-height: 1.5;
   pointer-events: none;
@@ -196,4 +199,329 @@
 .outfit-tryon__limitations ul {
   margin: 0.5rem 0 0;
   padding-left: 1.2rem;
+}
+
+/* —— Gallery last-slide (Helio / compact) —— */
+
+.outfit-tryon--gallery {
+  margin: 0;
+  padding: 0.75rem;
+  height: 100%;
+  min-height: 100%;
+  display: flex;
+  flex-direction: column;
+  gap: 0.55rem;
+  border: none;
+  background: #fafafa;
+}
+
+.outfit-tryon--gallery .visually-hidden {
+  position: absolute !important;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+.outfit-tryon__gallery-stage {
+  flex: 1 1 auto;
+  min-height: 0;
+}
+
+.outfit-tryon--gallery .outfit-tryon__canvas-wrap {
+  position: relative;
+  max-height: none;
+  aspect-ratio: 1 / 1;
+}
+
+/* Always-visible build stamp — Helio slideshow clips bottom status; badge lives IN canvas. */
+.outfit-tryon__build-badge {
+  position: absolute;
+  top: 0.55rem;
+  left: 0.55rem;
+  z-index: 8;
+  max-width: calc(100% - 3.5rem);
+  padding: 0.4rem 0.65rem;
+  border-radius: 4px;
+  background: #111;
+  color: #fff;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 0.95rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  line-height: 1.2;
+  pointer-events: none;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.28);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.outfit-tryon__build-badge.is-ok {
+  background: #1f4b3a;
+}
+
+.outfit-tryon__build-badge.is-error {
+  background: #8a1f1f;
+  white-space: normal;
+}
+
+.outfit-tryon__layer-toggles {
+  position: absolute;
+  left: 0.55rem;
+  bottom: 0.55rem;
+  z-index: 6;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+  pointer-events: auto;
+  touch-action: manipulation;
+}
+
+.outfit-tryon__layer-btn {
+  appearance: none;
+  border: 1px solid #d0d0d0;
+  border-radius: var(--ot-radius);
+  background: rgba(255, 255, 255, 0.92);
+  color: #444;
+  font: inherit;
+  font-size: 0.72rem;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  padding: 0.35rem 0.55rem;
+  cursor: pointer;
+  box-shadow: 0 1px 2px rgba(28, 27, 26, 0.06);
+}
+
+.outfit-tryon__layer-btn:hover {
+  border-color: var(--ot-accent);
+}
+
+.outfit-tryon__layer-btn.is-active,
+.outfit-tryon__layer-btn[aria-pressed="true"] {
+  background: var(--ot-accent);
+  border-color: var(--ot-accent);
+  color: #f7f3ec;
+}
+
+.outfit-tryon__drawer-trigger {
+  position: absolute;
+  top: 0.55rem;
+  right: 0.55rem;
+  z-index: 6;
+  width: 2.25rem;
+  height: 2.25rem;
+  display: grid;
+  place-items: center;
+  appearance: none;
+  border: 1px solid var(--ot-line);
+  border-radius: var(--ot-radius);
+  background: rgba(255, 255, 255, 0.9);
+  color: var(--ot-accent);
+  cursor: pointer;
+  box-shadow: 0 1px 2px rgba(28, 27, 26, 0.08);
+  pointer-events: auto;
+  touch-action: manipulation;
+}
+
+.outfit-tryon__drawer-trigger:hover {
+  border-color: var(--ot-accent);
+}
+
+.outfit-tryon__drawer-trigger-icon {
+  display: grid;
+  place-items: center;
+  line-height: 0;
+}
+
+.outfit-tryon__drawer {
+  position: absolute;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 7;
+  width: min(86%, 300px);
+  display: flex;
+  flex-direction: column;
+  background: rgba(250, 248, 245, 0.97);
+  border-left: 1px solid var(--ot-line);
+  box-shadow: -8px 0 24px rgba(28, 27, 26, 0.08);
+  overflow: auto;
+  -webkit-overflow-scrolling: touch;
+  /* Keep form usable inside Helio slideshow + orbit canvas. */
+  pointer-events: auto;
+  touch-action: auto;
+  isolation: isolate;
+}
+
+.outfit-tryon__drawer[hidden] {
+  display: none !important;
+}
+
+.outfit-tryon__drawer input,
+.outfit-tryon__drawer select,
+.outfit-tryon__drawer button,
+.outfit-tryon__drawer textarea,
+.outfit-tryon__drawer summary {
+  pointer-events: auto;
+  touch-action: manipulation;
+  -webkit-user-select: text;
+  user-select: text;
+}
+
+.outfit-tryon__drawer select,
+.outfit-tryon__drawer button,
+.outfit-tryon__drawer summary {
+  -webkit-user-select: none;
+  user-select: none;
+}
+
+/* Drawer open: form keeps pointer; canvas drag paused.
+   Drawer closed: canvas must receive orbit drags. */
+.outfit-tryon.is-drawer-open [data-tryon-canvas] {
+  pointer-events: none;
+}
+
+.outfit-tryon:not(.is-drawer-open) [data-tryon-canvas] {
+  pointer-events: auto;
+  touch-action: none;
+  cursor: grab;
+}
+
+.outfit-tryon:not(.is-drawer-open) [data-tryon-canvas]:active {
+  cursor: grabbing;
+}
+
+.outfit-tryon__drawer-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+  padding: 0.75rem 0.85rem;
+  border-bottom: 1px solid var(--ot-line);
+  font-size: 0.95rem;
+}
+
+.outfit-tryon__drawer-close {
+  appearance: none;
+  border: none;
+  background: transparent;
+  font-size: 1.35rem;
+  line-height: 1;
+  cursor: pointer;
+  color: var(--ot-muted);
+}
+
+.outfit-tryon__drawer .outfit-tryon__form {
+  padding: 0.75rem 0.85rem 1rem;
+}
+
+.outfit-tryon__form--compact {
+  gap: 0.55rem;
+}
+
+.outfit-tryon__field-row {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 0.4rem;
+}
+
+.outfit-tryon__field-row .outfit-tryon__field:only-child,
+.outfit-tryon__form--compact > .outfit-tryon__fieldset > .outfit-tryon__field-row {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.outfit-tryon__hint-inline {
+  margin: 0.35rem 0 0.15rem;
+  font-size: 0.72rem;
+  line-height: 1.35;
+  color: rgba(20, 20, 20, 0.62);
+}
+
+.outfit-tryon__more--advanced {
+  opacity: 0.92;
+}
+
+.outfit-tryon__more {
+  font-size: 0.8rem;
+  color: var(--ot-muted);
+}
+
+.outfit-tryon__more summary {
+  cursor: pointer;
+  font-weight: 600;
+  color: var(--ot-ink);
+}
+
+.outfit-tryon__limitations--compact {
+  margin-top: 0;
+}
+
+.outfit-gallery-tryon__shell {
+  width: 100%;
+  height: 100%;
+  min-height: 100%;
+}
+
+.outfit-gallery-tryon__slide,
+.outfit-gallery-tryon__grid-item {
+  --media-preview-ratio: 1;
+}
+
+.outfit-gallery-tryon__thumb {
+  display: grid !important;
+  place-items: center;
+  background:
+    linear-gradient(160deg, #f3eee6 0%, #e0d7ca 100%) !important;
+  border: 1px solid rgba(31, 75, 58, 0.35) !important;
+  overflow: hidden;
+}
+
+.outfit-gallery-tryon__thumb-label {
+  font-size: 0.7rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  color: #1f4b3a;
+  text-align: center;
+  padding: 0.25rem;
+  line-height: 1.2;
+}
+
+.outfit-gallery-tryon__dot {
+  min-width: 4.5rem !important;
+  width: auto !important;
+  padding: 0 0.45rem !important;
+  font-size: 0.7rem !important;
+  font-weight: 700 !important;
+  letter-spacing: 0.04em;
+  color: #1f4b3a !important;
+  border: 1px solid rgba(31, 75, 58, 0.35) !important;
+  background: linear-gradient(160deg, #f3eee6 0%, #e0d7ca 100%) !important;
+}
+
+.outfit-gallery-tryon__adjacent {
+  margin: 1rem 0 0;
+  border: 1px solid #d9d2c8;
+  background: #faf8f5;
+}
+
+.outfit-gallery-tryon__adjacent-title {
+  margin: 0;
+  padding: 0.75rem 1rem 0;
+  font-size: 1.1rem;
+}
+
+.outfit-gallery-tryon__dawn-item,
+.outfit-gallery-tryon__thumb-item {
+  list-style: none;
+}
+
+@media (max-width: 600px) {
+  .outfit-tryon__field-row {
+    grid-template-columns: 1fr 1fr;
+  }
 }

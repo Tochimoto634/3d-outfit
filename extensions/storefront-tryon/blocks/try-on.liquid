@@ -1,6 +1,7 @@
 {% comment %}
-  3D OUTFIT — ストアフロント試着 App Block
-  商品ページに追加: 体型入力 → パラメトリックマネキン → 服（GLB または布プロキシ）→ 360°
+  3D OUTFIT — ストアフロント試着 App Block（単独配置フォールバック）
+  推奨: App Embed「ギャラリー最終スライド」で商品メディアの末尾に配置。
+  本ブロックはギャラリー非対応テーマ／別セクション配置用の任意フォールバック。
 {% endcomment %}
 
 <div
@@ -13,7 +14,6 @@
   data-proxy-path="/apps/3d-outfit/tryon"
   data-api-base="{{ block.settings.api_base_url | escape }}"
   data-three-bundle="{{ 'try-on-three.bundle.js' | asset_url }}"
-  data-auto-rotate="{% if block.settings.auto_rotate %}true{% else %}false{% endif %}"
   data-garment-color="{{ block.settings.garment_color | default: '#3d5a80' | escape }}"
   {{ block.shopify_attributes }}
 >
@@ -28,90 +28,23 @@
 
   <div class="outfit-tryon__layout">
     <form class="outfit-tryon__form" data-tryon-form novalidate>
-      <fieldset class="outfit-tryon__fieldset">
-        <legend>基本（必須）</legend>
-
-        <label class="outfit-tryon__field">
-          <span>身長（cm）</span>
-          <input
-            type="number"
-            name="heightCm"
-            inputmode="decimal"
-            min="120"
-            max="220"
-            step="0.1"
-            required
-            placeholder="170"
-            value="{{ block.settings.default_height }}"
-          >
-        </label>
-
-        <label class="outfit-tryon__field">
-          <span>体重（kg）</span>
-          <input
-            type="number"
-            name="weightKg"
-            inputmode="decimal"
-            min="30"
-            max="200"
-            step="0.1"
-            required
-            placeholder="60"
-            value="{{ block.settings.default_weight }}"
-          >
-        </label>
-
-        <label class="outfit-tryon__field">
-          <span>性別</span>
-          <select name="gender" required>
-            <option value="" disabled selected>選択してください</option>
-            <option value="female">女性</option>
-            <option value="male">男性</option>
-            <option value="unspecified">指定しない</option>
-          </select>
-        </label>
-      </fieldset>
-
-      <fieldset class="outfit-tryon__fieldset">
-        <legend>詳細（任意・スリーサイズ）</legend>
-
-        <label class="outfit-tryon__field">
-          <span>バスト / 胸囲（cm）</span>
-          <input type="number" name="bustCm" inputmode="decimal" min="50" max="160" step="0.1" placeholder="任意">
-        </label>
-
-        <label class="outfit-tryon__field">
-          <span>ウエスト（cm）</span>
-          <input type="number" name="waistCm" inputmode="decimal" min="40" max="160" step="0.1" placeholder="任意">
-        </label>
-
-        <label class="outfit-tryon__field">
-          <span>ヒップ（cm）</span>
-          <input type="number" name="hipCm" inputmode="decimal" min="50" max="180" step="0.1" placeholder="任意">
-        </label>
-      </fieldset>
-
-      <p class="outfit-tryon__error" data-tryon-error hidden></p>
-
-      <div class="outfit-tryon__actions">
-        <button type="submit" class="outfit-tryon__btn outfit-tryon__btn--primary" data-tryon-submit>
-          マネキンを作成して試着
-        </button>
-        <button type="button" class="outfit-tryon__btn" data-tryon-toggle-rotate>
-          自動回転 ON/OFF
-        </button>
-      </div>
+      {% render 'try-on-form-fields', default_height: block.settings.default_height, default_weight: block.settings.default_weight %}
     </form>
 
     <div class="outfit-tryon__stage">
       <div class="outfit-tryon__canvas-wrap" data-tryon-canvas-wrap>
+        <div
+          class="outfit-tryon__build-badge"
+          data-tryon-build-badge
+          title="3D OUTFIT build"
+        >tryon v23-GARM2</div>
         <canvas data-tryon-canvas aria-label="3D試着ビューア"></canvas>
         <div class="outfit-tryon__overlay" data-tryon-overlay>
           左のフォームに体型を入力し、「マネキンを作成して試着」を押してください。
         </div>
       </div>
       <p class="outfit-tryon__hint" data-tryon-hint>
-        ドラッグで視点を回し、ピンチ／ホイールで拡大できます。
+        左右にドラッグで360°回転できます（拡大なし・上下の傾きは固定）。
       </p>
       <p class="outfit-tryon__status" data-tryon-status></p>
     </div>
@@ -121,10 +54,14 @@
     <summary>表示の制限事項</summary>
     <ul data-tryon-limitations>
       <li>実 TRELLIS 生成は未接続のため、服はプレースホルダ（布プロキシ）の場合があります。</li>
-      <li>マネキンは身長・体重などからの簡易パラメトリック体型です。</li>
+      <li>人体は MakeHuman/MPFB 系 CC0 メッシュを身長・体重・性別でスケールしたプレビューです。</li>
     </ul>
   </details>
 </div>
+
+<script src="{{ 'body-male-data.js' | asset_url | append: '&v=23garm2' }}" defer></script>
+<script src="{{ 'body-female-data.js' | asset_url | append: '&v=23garm2' }}" defer></script>
+<script src="{{ 'garment-sample-data.js' | asset_url | append: '&v=23garm2' }}" defer></script>
 
 {% schema %}
 {
@@ -151,12 +88,6 @@
       "id": "api_base_url",
       "label": "t:settings.api_base_url.label",
       "info": "t:settings.api_base_url.info"
-    },
-    {
-      "type": "checkbox",
-      "id": "auto_rotate",
-      "label": "t:settings.auto_rotate.label",
-      "default": true
     },
     {
       "type": "color",

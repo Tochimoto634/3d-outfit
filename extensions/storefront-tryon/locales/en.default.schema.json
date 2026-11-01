@@ -1,5 +1,13 @@
 {
-  "name": "3D try-on viewer",
+  "name": "3D try-on (standalone)",
+  "gallery_embed": {
+    "name": "Gallery last slide",
+    "settings": {
+      "enabled": {
+        "label": "Append a 3D try-on slide after product photos"
+      }
+    }
+  },
   "settings": {
     "heading": {
       "label": "Heading"
@@ -10,9 +18,6 @@
     "api_base_url": {
       "label": "API base URL (optional, for development)",
       "info": "Leave blank for App Proxy (/apps/3d-outfit/tryon). In theme editor preview, if the proxy fails, paste the shopify app dev tunnel URL (e.g. https://….trycloudflare.com, no trailing slash)."
-    },
-    "auto_rotate": {
-      "label": "Auto-rotate by default"
     },
     "garment_color": {
       "label": "Cloth proxy color"

@@ -1,20 +1,30 @@
 # storefront-tryon（Theme App Extension）
 
-商品ページ用 App Block「**3D試着ビューア**」。
+購入者向け 3D 試着。Helio（Horizon 系）では **ギャラリー最終スライド** を推奨。
 
-1. 身長・体重・性別（必須）+ 任意のスリーサイズ
-2. パラメトリックマネキン生成
-3. Asset3D GLB があれば着用表示、無ければ布プロキシ
-4. OrbitControls による 360° ターンテーブル
+## ブロック
+
+| 種類 | 名前 | 用途 |
+|------|------|------|
+| App Embed（`body`） | **ギャラリー最終スライド** | 商品写真の末尾に「3D試着」スライドを注入（推奨） |
+| App Block（`section`） | **3D試着（単独ブロック）** | 任意フォールバック。別セクション／ギャラリー非対応テーマ向け |
+
+## ギャラリー注入（Helio）
+
+`gallery-tryon.js` が商品ページの `media-gallery` を検出し:
+
+1. カルーセル: `slideshow-slide` を末尾追加 + サムネ／ドット
+2. グリッド: デスクトップ用 `media-gallery__grid` にも末尾追加（モバイルは slideshow）
+3. Dawn 系リスト / 隣接フォールバック
+
+スライド内 UI はコンパクト（フォームは折りたたみ or モーダル）。日本語。
 
 ## Three.js
 
-- 優先: 拡張アセット `assets/try-on-three.bundle.js`（Shopify CDN・テーマエディタ CSP 向け）
-- フォールバック: jsdelivr / unpkg / esm.sh + importmap（bare `three` 解決）
-- バンドル再生成（リポジトリルート）: `npm run build:tryon-three`
+- 優先: 拡張アセット `assets/try-on-three.bundle.js`
+- フォールバック: jsdelivr / unpkg / esm.sh + importmap
+- 再生成: `npm run build:tryon-three`
 
 ## API ベース URL
 
-通常は空欄（App Proxy）。テーマエディタでトンネルが必要な場合は `docs/storefront-tryon-api-base.md` を参照。
-
-有効化手順はリポジトリ外 Context の `docs` / `internal/storefront-tryon.md` も参照。
+通常は空欄（App Proxy）。詳細は `docs/storefront-tryon-api-base.md`。
