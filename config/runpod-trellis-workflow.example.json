@@ -1,8 +1,17 @@
 {
-  "_comment": "Placeholder ComfyUI graph for a NEW 3D OUTFIT RunPod serverless endpoint (TRELLIS.2). Do not reuse unrelated project endpoints. Copy to runpod-trellis-workflow.json or point RUNPOD_WORKFLOW_PATH at your real export. Photos are injected at submit time — do not put size-chart data here.",
+  "_comment": "EXAMPLE / PLACEHOLDER only. Copy to runpod-trellis-workflow.json or point RUNPOD_WORKFLOW_PATH at a real Comfy API export. Do not reuse unrelated project endpoints. Photos are injected at submit time — never put size-chart data here.",
+  "_export_howto": [
+    "1. Finish photo→GLB on a ComfyUI session that matches the worker custom_nodes + weights",
+    "2. Menu: Save (API Format) / Export (API) — UI workflow JSON will not work with worker-comfyui",
+    "3. Overwrite config/runpod-trellis-workflow.json OR set RUNPOD_WORKFLOW_PATH / RUNPOD_WORKFLOW_JSON",
+    "4. Keep LoadImage wired for app injection (placeholder name INPUT_IMAGE_0 in this example)",
+    "5. Rename _meta.title so it no longer contains 'placeholder' / 'edit to match'",
+    "6. npm run dry-run:runpod → expect placeholderNodes false before --live-ping"
+  ],
   "_runpod_comfy_hints": {
     "typical_payload": "POST /v2/{endpointId}/run  body: { input: { workflow, images, photo_only, ... } }",
-    "worker": "Often runpod-worker-comfy or a custom handler that accepts workflow + image URLs"
+    "worker": "Often runpod-worker-comfy or a custom handler that accepts workflow + image URLs",
+    "glb_output": "Stock handler may ignore SaveGLB history keys — wire glb_s3_upload / custom handler for https glb_url"
   },
   "3": {
     "inputs": {
