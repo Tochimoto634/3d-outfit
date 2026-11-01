@@ -433,11 +433,13 @@
     var bodyGlbCache = Object.create(null);
     var bodyLoadToken = 0;
     // Cache-bust + version marker — must appear on overlay badge + status.
-    var OUTFIT_BODY_ASSET_V = "22-CAT3";
+    var OUTFIT_BODY_ASSET_V = "23-GARM";
     var BODY_CDN_MALE =
       "https://cdn.jsdelivr.net/gh/Tochimoto634/3d-outfit@cd04df2/public/tryon/bodies/body-male.glb";
     var BODY_CDN_FEMALE =
       "https://cdn.jsdelivr.net/gh/Tochimoto634/3d-outfit@cd04df2/public/tryon/bodies/body-female.glb";
+    var SAMPLE_GARMENT_CDN =
+      "https://cdn.jsdelivr.net/gh/Tochimoto634/3d-outfit@cursor/gallery-tryon-slide-a47d/public/tryon/garments/sample-tee.glb";
     var bodyDataReady = null;
     // Force MakeHuman — no silent capsule. On failure: clear error on badge/status.
     var ALLOW_CAPSULE_FALLBACK = false;
@@ -1123,25 +1125,132 @@
       rootObj.position.y += L.chestY - center.y;
     }
 
+    function resolveSampleGarmentUrl() {
+      if (typeof window !== "undefined" && window.__OutfitSampleGarmentGlb) {
+        return window.__OutfitSampleGarmentGlb;
+      }
+      var attr = root.getAttribute("data-garment-sample") || "";
+      if (attr) return attr;
+      var nodes = document.querySelectorAll("script[src]");
+      for (var i = 0; i < nodes.length; i++) {
+        var src = nodes[i].getAttribute("src") || "";
+        if (/garment-sample-data\.js|outfit-garment-sample-data\.js/.test(src)) {
+          // Script may still be loading; CDN works as secondary.
+          break;
+        }
+      }
+      return SAMPLE_GARMENT_CDN;
+    }
+
+    function ensureSampleGarmentData() {
+      if (window.__OutfitSampleGarmentGlb) return Promise.resolve(true);
+      var src = "";
+      var nodes = document.querySelectorAll("script[src]");
+      for (var i = 0; i < nodes.length; i++) {
+        var s = nodes[i].getAttribute("src") || "";
+        if (/garment-sample-data\.js|outfit-garment-sample-data\.js/.test(s)) {
+          src = s;
+          break;
+        }
+      }
+      if (!src) {
+        var base = tryOnScriptBaseUrl();
+        if (base) src = base + "garment-sample-data.js";
+      }
+      if (!src) return Promise.resolve(false);
+      return fetchBodyDataFile(src, "__OutfitSampleGarmentGlb").then(function (r) {
+        return !!(r && r.ok && window.__OutfitSampleGarmentGlb);
+      });
+    }
+
+    function mountGarmentGltf(gltf, p) {
+      var model = gltf.scene || gltf.scenes[0];
+      fitLoadedModel(model, p);
+      garmentGroup.add(model);
+    }
+
     function loadGarmentGlb(url, p) {
       clearGarment();
       return new Promise(function (resolve) {
+        if (!url) {
+          resolve({ ok: false, placeholder: true, reason: "empty-url" });
+          return;
+        }
         var loader = new GLTFLoader();
+        function ok() {
+          resolve({ ok: true, placeholder: false, url: url });
+        }
+        function fail(reason) {
+          resolve({ ok: false, placeholder: true, reason: reason || "load-fail" });
+        }
+        // data: URLs — parse ArrayBuffer (CSP / large embeds).
+        if (String(url).indexOf("data:") === 0) {
+          try {
+            var ab = dataUrlToArrayBuffer(url);
+            if (!ab) {
+              fail("data-url-decode");
+              return;
+            }
+            loader.parse(
+              ab,
+              "",
+              function (gltf) {
+                mountGarmentGltf(gltf, p);
+                ok();
+              },
+              function () {
+                fail("data-url-parse");
+              },
+            );
+          } catch (err) {
+            fail("data-url-exception");
+          }
+          return;
+        }
         loader.load(
           url,
           function (gltf) {
-            var model = gltf.scene || gltf.scenes[0];
-            fitLoadedModel(model, p);
-            garmentGroup.add(model);
-            resolve({ ok: true, placeholder: false });
+            mountGarmentGltf(gltf, p);
+            ok();
           },
           undefined,
           function () {
-            addClothProxy(p);
-            resolve({ ok: false, placeholder: true });
+            fail("http-load");
           },
         );
       });
+    }
+
+    /**
+     * Prefer job GLB → sample tee → cloth proxy (last resort).
+     */
+    async function loadPreferredGarment(p, asset) {
+      var source =
+        (asset && asset.source) ||
+        (asset && asset.storageUrl ? "job" : "none");
+      var url = asset && asset.storageUrl ? asset.storageUrl : null;
+
+      if (url) {
+        var loaded = await loadGarmentGlb(url, p);
+        if (loaded.ok) {
+          return {
+            mode: source === "sample" || (asset && asset.placeholder) ? "sample" : "job",
+            ok: true,
+          };
+        }
+      }
+
+      await ensureSampleGarmentData();
+      var sampleUrl = resolveSampleGarmentUrl();
+      if (sampleUrl && sampleUrl !== url) {
+        var sampleLoaded = await loadGarmentGlb(sampleUrl, p);
+        if (sampleLoaded.ok) {
+          return { mode: "sample", ok: true };
+        }
+      }
+
+      addClothProxy(p);
+      return { mode: "cloth", ok: false };
     }
 
     function resize() {
@@ -1235,46 +1344,57 @@
         var p = body.mannequin || buildProportions(body);
         this.setStatus("人体モデルを読み込み中…");
         var bodyResult = await rebuildMannequin(p);
-        // After create: both body + product available and visible.
         mannequinGroup.visible = true;
         garmentGroup.visible = true;
         syncLayerButtons();
         this.hideOverlay();
         resizeWhenVisible();
-        // Always keep a product/cloth mesh visible after create.
-        if (asset && asset.storageUrl) {
-          this.setStatus("服 3D を読み込み中…");
-          var loaded = await loadGarmentGlb(asset.storageUrl, p);
-          this.setStatus(
-            loaded.placeholder
-              ? "GLB の読み込みに失敗したため布プロキシを表示しています。"
-              : "生成アセットを表示中（ドラッグで360°）。",
-          );
-        } else {
-          addClothProxy(p);
-        }
+        this.setStatus("服 3D を読み込み中…");
+        var garment = await loadPreferredGarment(p, asset || null);
         garmentGroup.visible = true;
         syncLayerButtons();
         var src = (bodyResult && bodyResult.source) || "";
         var tag = " [tryon v" + OUTFIT_BODY_ASSET_V + "]";
-        if (String(src).indexOf("makehuman") === 0) {
+        var bodyLabel =
+          String(src).indexOf("makehuman") === 0
+            ? "MakeHuman系人体"
+            : src === "capsule-fallback"
+              ? "簡易マネキン"
+              : "人体";
+        if (garment.mode === "job") {
           this.setStatus(
-            "MakeHuman系人体 + 布プロキシで試着プレビューしています。" + tag,
+            bodyLabel + " + 生成ジョブ GLB を表示中（ドラッグで360°）。" + tag,
+          );
+        } else if (garment.mode === "sample") {
+          this.setStatus(
+            bodyLabel +
+              " + サンプル服メッシュ（本番 TRELLIS 未着）。Admin「3D作成」で差し替え。" +
+              tag,
           );
         } else if (src === "capsule-fallback") {
           this.setStatus(
-            "⚠ MakeHuman未読込のため簡易マネキンで代替表示中。" +
+            "⚠ MakeHuman未読込のため簡易マネキン + 布プロキシ。" +
               tag +
               (bodyResult.detail ? " " + bodyResult.detail : ""),
           );
         } else if (String(src).indexOf("error") === 0) {
           this.setStatus(
-            "⚠ MakeHuman読込失敗（カプセルなし）。商品メッシュのみ。" +
+            "⚠ MakeHuman読込失敗。布プロキシのみ。" +
               tag +
               (bodyResult.detail ? " " + bodyResult.detail : ""),
           );
         } else {
-          this.setStatus("布プロキシで試着プレビューしています。" + tag);
+          this.setStatus(
+            bodyLabel +
+              " + 布プロキシ（GLB 読込失敗）。" +
+              tag,
+          );
+        }
+        root.__outfitGarmentMode = garment.mode;
+        try {
+          root.setAttribute("data-garment-mode", garment.mode);
+        } catch (errG) {
+          /* ignore */
         }
         resizeWhenVisible();
         fitVisibleContent();
@@ -1282,7 +1402,7 @@
       /**
        * Gallery idle: product only (no body) until the user creates a mannequin.
        */
-      showProductOnlyPreview: function () {
+      showProductOnlyPreview: async function () {
         try {
           var p = buildProportions({
             heightCm: 170,
@@ -1290,7 +1410,11 @@
             gender: "unspecified",
           });
           clearMannequin();
-          addClothProxy(p);
+          var garment = await loadPreferredGarment(p, {
+            storageUrl: null,
+            source: "sample",
+            placeholder: true,
+          });
           mannequinGroup.visible = false;
           garmentGroup.visible = true;
           syncLayerButtons();
@@ -1298,8 +1422,17 @@
           resizeWhenVisible();
           fitVisibleContent();
           updateBuildBadge("product");
+          root.__outfitGarmentMode = garment.mode;
+          var gLabel =
+            garment.mode === "sample"
+              ? "サンプル服"
+              : garment.mode === "job"
+                ? "生成服"
+                : "布プロキシ";
           this.setStatus(
-            "商品プレビュー（人体モデルは設定から作成） [tryon v" +
+            "商品プレビュー（" +
+              gLabel +
+              "・人体は設定から作成） [tryon v" +
               OUTFIT_BODY_ASSET_V +
               "]",
           );

@@ -178,19 +178,23 @@ async function upsertAssetStubs(opts: {
 }) {
   const stubs = extractAssetStubsFromOutput(opts.output);
   if (stubs.length === 0 && opts.mock) {
-    // Persist an explicit stub row so UI can show "awaiting real GLB"
+    // Demo sample tee so storefront can load a real GLB until TRELLIS produces one.
+    const { SAMPLE_GARMENT_CDN, SAMPLE_GARMENT_MIME } = await import(
+      "../lib/sample-garment"
+    );
     await prisma.asset3D.create({
       data: {
         productSnapshotId: opts.productSnapshotId,
         engineRunId: opts.engineRunId,
         kind: "base",
-        sizeLabel: "worn",
-        storageUrl: null,
-        mimeType: "model/gltf-binary",
+        sizeLabel: "sample",
+        storageUrl: SAMPLE_GARMENT_CDN,
+        mimeType: SAMPLE_GARMENT_MIME,
         metaJson: JSON.stringify({
           stub: true,
           mock: true,
-          note: "Mock EngineRun — no GLB URL. Live RunPod output URLs land here.",
+          sample: true,
+          note: "Mock EngineRun — sample-tee.glb. Live RunPod GLB URLs replace this.",
         }),
       },
     });

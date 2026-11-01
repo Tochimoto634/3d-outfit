@@ -175,9 +175,22 @@ assert.match(tryOnJs, /mountMakeHumanBody|__OutfitBodyMaleGlb/);
 assert.match(tryOnJs, /cdn\.jsdelivr\.net\/gh\/Tochimoto634\/3d-outfit/);
 assert.match(tryOnJs, /ensureBodyDataScripts|BODY_CDN_MALE/);
 assert.match(tryOnJs, /ALLOW_CAPSULE_FALLBACK\s*=\s*false/);
-assert.match(tryOnJs, /OUTFIT_BODY_ASSET_V\s*=\s*"22-CAT3"/);
+assert.match(tryOnJs, /OUTFIT_BODY_ASSET_V\s*=\s*"23-GARM"/);
 assert.match(tryOnJs, /categoryBiases|normalizeBodyCats|syncGenderCategoryFields/);
 assert.match(tryOnJs, /bodyMuscle|bodyWaist|bodyCup|bodyChestThickness/);
+assert.match(tryOnJs, /loadPreferredGarment|SAMPLE_GARMENT_CDN|__OutfitSampleGarmentGlb/);
+assert.match(tryOnJs, /生成ジョブ GLB|サンプル服メッシュ/);
+assert.ok(
+  fs.existsSync(path.join(root, "public/tryon/garments/sample-tee.glb")),
+  "sample-tee.glb missing",
+);
+assert.ok(
+  fs.existsSync(
+    path.join(root, "extensions/storefront-tryon/assets/garment-sample-data.js"),
+  ),
+  "garment-sample-data.js missing",
+);
+assert.match(galleryEmbed, /garment-sample-data\.js/);
 const formFields = fs.readFileSync(formFieldsPath, "utf8");
 assert.match(formFields, /体型カテゴリ/);
 assert.match(formFields, /outfit-tryon__more--cats/);
@@ -193,9 +206,9 @@ assert.match(tryOnJs, /tryOnScriptBaseUrl|body-male-data\.js/);
 assert.match(tryOnJs, /updateBuildBadge|data-tryon-build-badge/);
 assert.match(tryOnJs, /rebuildCapsuleMannequin|capsule-fallback/);
 assert.match(tryOnJs, /showProductOnlyPreview/);
-assert.match(galleryEmbed, /v=22cat3/);
+assert.match(galleryEmbed, /v=23garm/);
 assert.match(galleryEmbed, /data-tryon-build-badge/);
-assert.match(galleryEmbed, /tryon v22-CAT3/);
+assert.match(galleryEmbed, /tryon v23-GARM/);
 assert.match(galleryEmbed, /01a19540-d48d-7ee0-bc02-24b3c770447a/);
 assert.match(galleryEmbed, /data-outfit-gallery/);
 assert.match(galleryEmbed, /body-male-data\.js/);
@@ -204,7 +217,7 @@ assert.match(liquid, /body-male-data\.js/);
 assert.match(liquid, /data-tryon-build-badge/);
 assert.doesNotMatch(liquid, /bustCm|詳細（任意・スリーサイズ）/);
 assert.match(tryOnCss, /outfit-tryon__build-badge/);
-assert.match(galleryJs, /applyBodyDataText|fetchOne|v=22cat3/);
+assert.match(galleryJs, /applyBodyDataText|fetchOne|v=23garm/);
 const bodyMaleData = path.join(
   root,
   "extensions/storefront-tryon/assets/body-male-data.js",
