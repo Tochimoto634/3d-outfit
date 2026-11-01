@@ -298,16 +298,15 @@
     var bodyGlbCache = Object.create(null);
     var bodyLoadToken = 0;
     // Cache-bust + version marker for live verification.
-    var OUTFIT_BODY_ASSET_V = "16";
-    // jsDelivr only as last resort (Shopify CSP often blocks it → was
-    // causing silent capsule fallback on live Helio).
+    var OUTFIT_BODY_ASSET_V = "17";
+    // jsDelivr only as last resort (Shopify CSP often blocks it).
     var BODY_CDN_MALE =
-      "https://cdn.jsdelivr.net/gh/Tochimoto634/3d-outfit@33ae5df/public/tryon/bodies/body-male.glb";
+      "https://cdn.jsdelivr.net/gh/Tochimoto634/3d-outfit@1430cc5/public/tryon/bodies/body-male.glb";
     var BODY_CDN_FEMALE =
-      "https://cdn.jsdelivr.net/gh/Tochimoto634/3d-outfit@33ae5df/public/tryon/bodies/body-female.glb";
+      "https://cdn.jsdelivr.net/gh/Tochimoto634/3d-outfit@1430cc5/public/tryon/bodies/body-female.glb";
     var bodyDataReady = null;
-    // FORCE: never rebuild procedural capsules when MakeHuman assets exist.
-    var ALLOW_CAPSULE_FALLBACK = false;
+    // Capsule OK as LAST RESORT only (visible status). Prefer MakeHuman.
+    var ALLOW_CAPSULE_FALLBACK = true;
 
     function tryOnScriptBaseUrl() {
       var nodes = document.querySelectorAll("script[src]");
@@ -647,12 +646,19 @@
             return tryLoad(cdn, "makehuman-cdn");
           }).catch(function (err2) {
             if (token !== bodyLoadToken) return { source: "stale" };
-            clearMannequin();
             if (ALLOW_CAPSULE_FALLBACK) {
               rebuildCapsuleMannequin(p);
-              return finish("capsule-fallback", String(err2 && err2.message));
+              return finish(
+                "capsule-fallback",
+                "MakeHuman failed → capsule (v" +
+                  OUTFIT_BODY_ASSET_V +
+                  "; cdnTried=" +
+                  triedCdn +
+                  "): " +
+                  String((err2 && err2.message) || err2),
+              );
             }
-            // FORCE: never show capsules on live — empty + error status.
+            clearMannequin();
             return finish(
               "error-load",
               "MakeHuman load failed (v" +
@@ -971,16 +977,7 @@
         syncLayerButtons();
         this.hideOverlay();
         resizeWhenVisible();
-        if (
-          bodyResult &&
-          bodyResult.source &&
-          String(bodyResult.source).indexOf("error") === 0
-        ) {
-          this.setStatus(
-            "人体モデルの読み込みに失敗しました（v16）。" +
-              (bodyResult.detail ? " " + bodyResult.detail : ""),
-          );
-        }
+        // Always keep a product/cloth mesh visible after create.
         if (asset && asset.storageUrl) {
           this.setStatus("服 3D を読み込み中…");
           var loaded = await loadGarmentGlb(asset.storageUrl, p);
@@ -991,19 +988,26 @@
           );
         } else {
           addClothProxy(p);
-          var bodyNote =
-            bodyResult &&
-            bodyResult.source &&
-            String(bodyResult.source).indexOf("makehuman") === 0
-              ? "MakeHuman系人体 + "
-              : bodyResult &&
-                  bodyResult.source &&
-                  String(bodyResult.source).indexOf("error") === 0
-                ? "人体未読込 + "
-                : "";
+        }
+        garmentGroup.visible = true;
+        syncLayerButtons();
+        var src = (bodyResult && bodyResult.source) || "";
+        if (String(src).indexOf("makehuman") === 0) {
           this.setStatus(
-            bodyNote +
-              "布プロキシで試着プレビューしています（TRELLIS 未接続）。",
+            "MakeHuman系人体 + 布プロキシで試着プレビューしています（TRELLIS 未接続）。",
+          );
+        } else if (src === "capsule-fallback") {
+          this.setStatus(
+            "簡易マネキン（MakeHuman未読込の代替）+ 布プロキシで表示中。",
+          );
+        } else if (String(src).indexOf("error") === 0) {
+          this.setStatus(
+            "人体の読み込みに失敗。商品メッシュのみ表示中。" +
+              (bodyResult.detail ? " " + bodyResult.detail : ""),
+          );
+        } else {
+          this.setStatus(
+            "布プロキシで試着プレビューしています（TRELLIS 未接続）。",
           );
         }
         resizeWhenVisible();
@@ -1299,19 +1303,21 @@
           );
         } else if (tryOn && tryOn._offline) {
           viewer.setStatus(
-            (root.__outfitBodySource &&
-            String(root.__outfitBodySource).indexOf("makehuman") === 0
-              ? "MakeHuman系人体 + "
-              : "") +
-              "API 未接続のため布プロキシで試着プレビューしています。",
+            root.__outfitBodySource === "capsule-fallback"
+              ? "簡易マネキン（代替）+ API 未接続のため布プロキシで表示中。"
+              : root.__outfitBodySource &&
+                  String(root.__outfitBodySource).indexOf("makehuman") === 0
+                ? "MakeHuman系人体 + API 未接続のため布プロキシで試着プレビューしています。"
+                : "API 未接続のため布プロキシで試着プレビューしています。",
           );
         } else {
           viewer.setStatus(
-            (root.__outfitBodySource &&
-            String(root.__outfitBodySource).indexOf("makehuman") === 0
-              ? "MakeHuman系人体 + "
-              : "") +
-              "実 GLB が無いため布プロキシで試着プレビューしています。",
+            root.__outfitBodySource === "capsule-fallback"
+              ? "簡易マネキン（代替）+ 実 GLB 無しの布プロキシ表示中。"
+              : root.__outfitBodySource &&
+                  String(root.__outfitBodySource).indexOf("makehuman") === 0
+                ? "MakeHuman系人体 + 実 GLB が無いため布プロキシで試着プレビューしています。"
+                : "実 GLB が無いため布プロキシで試着プレビューしています。",
           );
         }
       } catch (e) {
