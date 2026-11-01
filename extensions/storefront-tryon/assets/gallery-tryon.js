@@ -11,7 +11,7 @@
     function bust(url) {
       if (!url) return url;
       if (/[?&]v=/.test(url)) return url;
-      return url + (url.indexOf("?") >= 0 ? "&" : "?") + "v=20badge";
+      return url + (url.indexOf("?") >= 0 ? "&" : "?") + "v=21live";
     }
     function applyBodyDataText(text, marker) {
       if (!text || !marker) return false;
