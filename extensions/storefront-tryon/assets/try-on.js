@@ -5,11 +5,31 @@
 (function () {
   "use strict";
 
-  var THREE_CDN = "https://cdn.jsdelivr.net/npm/three@0.170.0/+esm";
-  var ORBIT_CDN =
-    "https://cdn.jsdelivr.net/npm/three@0.170.0/examples/jsm/controls/OrbitControls.js";
-  var GLTF_CDN =
-    "https://cdn.jsdelivr.net/npm/three@0.170.0/examples/jsm/loaders/GLTFLoader.js";
+  /** Vendored ESM bundle (preferred — theme editor CSP / no bare "three" import). */
+  var THREE_VERSION = "0.170.0";
+  var CDN_THREE_CANDIDATES = [
+    "https://cdn.jsdelivr.net/npm/three@" + THREE_VERSION + "/build/three.module.min.js",
+    "https://unpkg.com/three@" + THREE_VERSION + "/build/three.module.min.js",
+    "https://esm.sh/three@" + THREE_VERSION,
+  ];
+  var CDN_ORBIT_CANDIDATES = [
+    "https://cdn.jsdelivr.net/npm/three@" +
+      THREE_VERSION +
+      "/examples/jsm/controls/OrbitControls.js",
+    "https://unpkg.com/three@" +
+      THREE_VERSION +
+      "/examples/jsm/controls/OrbitControls.js",
+    "https://esm.sh/three@" + THREE_VERSION + "/examples/jsm/controls/OrbitControls",
+  ];
+  var CDN_GLTF_CANDIDATES = [
+    "https://cdn.jsdelivr.net/npm/three@" +
+      THREE_VERSION +
+      "/examples/jsm/loaders/GLTFLoader.js",
+    "https://unpkg.com/three@" +
+      THREE_VERSION +
+      "/examples/jsm/loaders/GLTFLoader.js",
+    "https://esm.sh/three@" + THREE_VERSION + "/examples/jsm/loaders/GLTFLoader",
+  ];
 
   function clamp(n, min, max) {
     return Math.min(max, Math.max(min, n));
@@ -482,15 +502,83 @@
     };
   }
 
-  async function ensureThree() {
-    var THREE = await import(THREE_CDN);
-    var orbitMod = await import(ORBIT_CDN);
-    var gltfMod = await import(GLTF_CDN);
-    return {
+  function normalizeLibs(mod) {
+    if (!mod) return null;
+    var THREE = mod.THREE || mod;
+    var OrbitControls = mod.OrbitControls || (mod.default && mod.default.OrbitControls);
+    var GLTFLoader = mod.GLTFLoader || (mod.default && mod.default.GLTFLoader);
+    if (THREE && THREE.Scene && OrbitControls && GLTFLoader) {
+      return { THREE: THREE, OrbitControls: OrbitControls, GLTFLoader: GLTFLoader };
+    }
+    return null;
+  }
+
+  function injectThreeImportMap(threeUrl) {
+    if (typeof threeUrl !== "string" || !threeUrl) return;
+    if (document.querySelector('script[data-outfit-three-importmap]')) return;
+    // Import maps must exist before dependent modules resolve bare "three".
+    var script = document.createElement("script");
+    script.type = "importmap";
+    script.setAttribute("data-outfit-three-importmap", "1");
+    script.textContent = JSON.stringify({ imports: { three: threeUrl } });
+    var first = document.head.firstChild;
+    if (first) document.head.insertBefore(script, first);
+    else document.head.appendChild(script);
+  }
+
+  async function importModule(url) {
+    return import(/* webpackIgnore: true */ url);
+  }
+
+  async function loadFromBundleUrl(url) {
+    if (!url) return null;
+    try {
+      var mod = await importModule(url);
+      return normalizeLibs(mod);
+    } catch (err) {
+      return null;
+    }
+  }
+
+  async function loadFromCdnPair(threeUrl, orbitUrl, gltfUrl) {
+    injectThreeImportMap(threeUrl);
+    var THREE = await importModule(threeUrl);
+    var orbitMod = await importModule(orbitUrl);
+    var gltfMod = await importModule(gltfUrl);
+    return normalizeLibs({
       THREE: THREE,
       OrbitControls: orbitMod.OrbitControls,
       GLTFLoader: gltfMod.GLTFLoader,
-    };
+    });
+  }
+
+  /**
+   * Resolve Three.js for storefront + theme editor preview.
+   * 1) Extension asset bundle (Shopify CDN — CSP-safe)
+   * 2) CDN fallbacks with importmap for bare "three" (OrbitControls / GLTFLoader)
+   */
+  async function ensureThree(roots) {
+    var bundleUrl = "";
+    if (roots && roots.length) {
+      bundleUrl = roots[0].getAttribute("data-three-bundle") || "";
+    }
+    var local = await loadFromBundleUrl(bundleUrl);
+    if (local) return local;
+
+    var lastError = null;
+    for (var i = 0; i < CDN_THREE_CANDIDATES.length; i++) {
+      try {
+        var libs = await loadFromCdnPair(
+          CDN_THREE_CANDIDATES[i],
+          CDN_ORBIT_CANDIDATES[i],
+          CDN_GLTF_CANDIDATES[i],
+        );
+        if (libs) return libs;
+      } catch (err) {
+        lastError = err;
+      }
+    }
+    throw lastError || new Error("three_load_failed");
   }
 
   function bindRoot(root, libs) {
@@ -558,7 +646,7 @@
     var roots = document.querySelectorAll("[data-outfit-tryon]");
     if (!roots.length) return;
     try {
-      var libs = await ensureThree();
+      var libs = await ensureThree(roots);
       roots.forEach(function (root) {
         bindRoot(root, libs);
       });
@@ -567,7 +655,7 @@
         var statusEl = root.querySelector("[data-tryon-status]");
         if (statusEl) {
           statusEl.textContent =
-            "3D ライブラリの読み込みに失敗しました。ネットワークを確認してください。";
+            "3D ライブラリの読み込みに失敗しました。テーマアセット（try-on-three.bundle.js）または CDN を確認してください。";
         }
       });
     }

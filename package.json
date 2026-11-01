@@ -22,7 +22,8 @@
     "smoke:size-chart": "node scripts/smoke-size-chart.mjs",
     "smoke:model-photo": "node scripts/smoke-model-photo.mjs",
     "smoke:create-button": "tsx scripts/smoke-create-button-state.mjs",
-    "smoke:storefront-tryon": "tsx scripts/smoke-storefront-tryon.mjs"
+    "smoke:storefront-tryon": "tsx scripts/smoke-storefront-tryon.mjs",
+    "build:tryon-three": "node scripts/build-tryon-three-bundle.mjs"
   },
   "type": "module",
   "engines": {
@@ -54,7 +55,9 @@
     "@types/react-dom": "^18.3.7",
     "@typescript-eslint/eslint-plugin": "^6.21.0",
     "@typescript-eslint/parser": "^6.21.0",
+    "esbuild": "^0.25.0",
     "eslint": "^8.57.1",
+    "three": "0.170.0",
     "eslint-import-resolver-typescript": "^4.4.4",
     "eslint-plugin-import": "^2.32.0",
     "eslint-plugin-jsx-a11y": "^6.10.2",
