@@ -115,6 +115,8 @@ assert.doesNotMatch(tryOnJs, /toggleAutoRotate|autoRotate\s*=\s*true/);
 
 assert.match(galleryJs, /data-tryon-drawer/);
 assert.match(galleryJs, /shieldInteractive|stopPropagation/);
+assert.match(galleryJs, /shieldOrbitCanvas/);
+assert.match(galleryJs, /data-tryon-orbit-host/);
 assert.match(galleryJs, /outfit:tryon:drawer/);
 assert.match(galleryEmbed, /data-tryon-drawer-toggle/);
 assert.doesNotMatch(galleryEmbed, /自動回転|auto_rotate|data-tryon-toggle-rotate/);
@@ -127,6 +129,8 @@ assert.doesNotMatch(
 );
 assert.match(tryOnJs, /outfit:tryon:drawer/);
 assert.match(tryOnJs, /controls\.enabled/);
+assert.match(tryOnJs, /getAzimuthalAngle|__outfitTryOnOrbit/);
+assert.doesNotMatch(tryOnJs, /autoRotate\s*=\s*true/);
 
 console.log("smoke:storefront-tryon OK", {
   femaleBmi: female.bmi,
@@ -135,4 +139,5 @@ console.log("smoke:storefront-tryon OK", {
   galleryEmbed: true,
   yawOnlyOrbit: true,
   drawerInputShield: true,
+  orbitCanvasShield: true,
 });

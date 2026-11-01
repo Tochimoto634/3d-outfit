@@ -230,6 +230,16 @@
     );
   }
 
+  function isDrawerChrome(target) {
+    return !!(
+      target &&
+      target.closest &&
+      target.closest(
+        "[data-tryon-drawer], [data-tryon-drawer-toggle], [data-outfit-interactive]",
+      )
+    );
+  }
+
   /**
    * Helio slideshow.js attaches mousedown on the scroller (bubble) and calls
    * preventDefault unless target.closest('model-viewer') — that cancels focus
@@ -275,6 +285,27 @@
     });
   }
 
+  /**
+   * Keep OrbitControls yaw drag on the canvas. Helio's #handleMouseDown will
+   * otherwise preventDefault + setPointerCapture on pointermove and steal the
+   * gesture for slide scrolling. Stop bubble only for canvas hits — never for
+   * drawer chrome (form shield handles those).
+   */
+  function shieldOrbitCanvas(root) {
+    var wrap = root.querySelector("[data-tryon-canvas-wrap]");
+    if (!wrap || wrap.__outfitTryOnOrbitShielded) return;
+    wrap.__outfitTryOnOrbitShielded = true;
+    wrap.setAttribute("data-tryon-orbit-host", "");
+
+    ["pointerdown", "mousedown", "touchstart", "wheel"].forEach(function (type) {
+      wrap.addEventListener(type, function (ev) {
+        if (isDrawerChrome(ev.target)) return;
+        // Canvas / empty stage only — let OrbitControls keep the pointer.
+        ev.stopPropagation();
+      });
+    });
+  }
+
   function wireCompactUi(root) {
     var toggle = root.querySelector("[data-tryon-drawer-toggle]");
     var closeBtn = root.querySelector("[data-tryon-drawer-close]");
@@ -282,6 +313,7 @@
 
     shieldInteractive(toggle);
     shieldInteractive(drawer);
+    shieldOrbitCanvas(root);
 
     if (toggle && drawer) {
       toggle.addEventListener("click", function (ev) {

@@ -146,13 +146,28 @@
       controls.enabled = !!enabled;
     }
     // Body-settings drawer open → freeze orbit so fields stay focusable.
+    // Canvas drag stays available whenever the drawer is closed.
     root.addEventListener("outfit:tryon:drawer", function (ev) {
       var open = !!(ev && ev.detail && ev.detail.open);
       setOrbitEnabled(!open);
     });
     if (root.classList.contains("is-drawer-open")) {
       setOrbitEnabled(false);
+    } else {
+      setOrbitEnabled(true);
     }
+    root.__outfitTryOnOrbit = {
+      getYaw: function () {
+        return controls.getAzimuthalAngle();
+      },
+      getPolar: function () {
+        return controls.getPolarAngle();
+      },
+      setEnabled: setOrbitEnabled,
+      isEnabled: function () {
+        return !!controls.enabled;
+      },
+    };
 
     function lockOrbitHeight() {
       controls.update();
@@ -432,6 +447,10 @@
       hideOverlay: function () {
         if (overlay) overlay.hidden = true;
       },
+      getYaw: function () {
+        return controls.getAzimuthalAngle();
+      },
+      setOrbitEnabled: setOrbitEnabled,
       applyTryOn: async function (body, asset) {
         var p = body.mannequin || buildProportions(body);
         rebuildMannequin(p);
@@ -457,6 +476,11 @@
         window.removeEventListener("resize", resize);
         controls.dispose();
         renderer.dispose();
+        try {
+          delete root.__outfitTryOnOrbit;
+        } catch (err) {
+          root.__outfitTryOnOrbit = null;
+        }
       },
     };
   }

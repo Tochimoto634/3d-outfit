@@ -327,9 +327,20 @@
   user-select: none;
 }
 
-/* While body settings are open, canvas must not steal clicks/drags. */
+/* Drawer open: form keeps pointer; canvas drag paused.
+   Drawer closed: canvas must receive orbit drags. */
 .outfit-tryon.is-drawer-open [data-tryon-canvas] {
   pointer-events: none;
+}
+
+.outfit-tryon:not(.is-drawer-open) [data-tryon-canvas] {
+  pointer-events: auto;
+  touch-action: none;
+  cursor: grab;
+}
+
+.outfit-tryon:not(.is-drawer-open) [data-tryon-canvas]:active {
+  cursor: grabbing;
 }
 
 .outfit-tryon__drawer-head {
