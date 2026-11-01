@@ -1,6 +1,6 @@
 {% comment %}
   Shared compact try-on form fields (Japanese UI).
-  TO-43: body category selects; height/weight stay numeric; cm detail demoted.
+  TO-43/45: height/weight/gender + body categories only (no numeric bust/waist/hip inputs).
   @param default_height {number}
   @param default_weight {number}
 {% endcomment %}
@@ -122,28 +122,6 @@
         <option value="very_thick">かなり厚め</option>
       </select>
     </label>
-  </fieldset>
-</details>
-
-<details class="outfit-tryon__more outfit-tryon__more--advanced">
-  <summary>上級：詳細サイズ cm（任意）</summary>
-  <fieldset class="outfit-tryon__fieldset">
-    <legend>スリーサイズ</legend>
-    <p class="outfit-tryon__hint-inline">通常は体型カテゴリを優先。数値は上書きバイアス用。</p>
-    <div class="outfit-tryon__field-row">
-      <label class="outfit-tryon__field">
-        <span>バスト</span>
-        <input type="number" name="bustCm" inputmode="decimal" min="50" max="160" step="0.1" placeholder="cm">
-      </label>
-      <label class="outfit-tryon__field">
-        <span>ウエスト</span>
-        <input type="number" name="waistCm" inputmode="decimal" min="40" max="160" step="0.1" placeholder="cm">
-      </label>
-      <label class="outfit-tryon__field">
-        <span>ヒップ</span>
-        <input type="number" name="hipCm" inputmode="decimal" min="50" max="180" step="0.1" placeholder="cm">
-      </label>
-    </div>
   </fieldset>
 </details>
 

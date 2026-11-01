@@ -28,76 +28,7 @@
 
   <div class="outfit-tryon__layout">
     <form class="outfit-tryon__form" data-tryon-form novalidate>
-      <fieldset class="outfit-tryon__fieldset">
-        <legend>基本（必須）</legend>
-
-        <label class="outfit-tryon__field">
-          <span>身長（cm）</span>
-          <input
-            type="number"
-            name="heightCm"
-            inputmode="decimal"
-            min="120"
-            max="220"
-            step="0.1"
-            required
-            placeholder="170"
-            value="{{ block.settings.default_height }}"
-          >
-        </label>
-
-        <label class="outfit-tryon__field">
-          <span>体重（kg）</span>
-          <input
-            type="number"
-            name="weightKg"
-            inputmode="decimal"
-            min="30"
-            max="200"
-            step="0.1"
-            required
-            placeholder="60"
-            value="{{ block.settings.default_weight }}"
-          >
-        </label>
-
-        <label class="outfit-tryon__field">
-          <span>性別</span>
-          <select name="gender" required>
-            <option value="" disabled selected>選択してください</option>
-            <option value="female">女性</option>
-            <option value="male">男性</option>
-            <option value="unspecified">指定しない</option>
-          </select>
-        </label>
-      </fieldset>
-
-      <fieldset class="outfit-tryon__fieldset">
-        <legend>詳細（任意・スリーサイズ）</legend>
-
-        <label class="outfit-tryon__field">
-          <span>バスト / 胸囲（cm）</span>
-          <input type="number" name="bustCm" inputmode="decimal" min="50" max="160" step="0.1" placeholder="任意">
-        </label>
-
-        <label class="outfit-tryon__field">
-          <span>ウエスト（cm）</span>
-          <input type="number" name="waistCm" inputmode="decimal" min="40" max="160" step="0.1" placeholder="任意">
-        </label>
-
-        <label class="outfit-tryon__field">
-          <span>ヒップ（cm）</span>
-          <input type="number" name="hipCm" inputmode="decimal" min="50" max="180" step="0.1" placeholder="任意">
-        </label>
-      </fieldset>
-
-      <p class="outfit-tryon__error" data-tryon-error hidden></p>
-
-      <div class="outfit-tryon__actions">
-        <button type="submit" class="outfit-tryon__btn outfit-tryon__btn--primary" data-tryon-submit>
-          マネキンを作成して試着
-        </button>
-      </div>
+      {% render 'try-on-form-fields', default_height: block.settings.default_height, default_weight: block.settings.default_weight %}
     </form>
 
     <div class="outfit-tryon__stage">
@@ -106,7 +37,7 @@
           class="outfit-tryon__build-badge"
           data-tryon-build-badge
           title="3D OUTFIT build"
-        >tryon v22-CAT2</div>
+        >tryon v22-CAT3</div>
         <canvas data-tryon-canvas aria-label="3D試着ビューア"></canvas>
         <div class="outfit-tryon__overlay" data-tryon-overlay>
           左のフォームに体型を入力し、「マネキンを作成して試着」を押してください。
@@ -128,8 +59,8 @@
   </details>
 </div>
 
-<script src="{{ 'body-male-data.js' | asset_url | append: '&v=22cat2' }}" defer></script>
-<script src="{{ 'body-female-data.js' | asset_url | append: '&v=22cat2' }}" defer></script>
+<script src="{{ 'body-male-data.js' | asset_url | append: '&v=22cat3' }}" defer></script>
+<script src="{{ 'body-female-data.js' | asset_url | append: '&v=22cat3' }}" defer></script>
 
 {% schema %}
 {
