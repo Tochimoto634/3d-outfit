@@ -86,6 +86,11 @@
             </button>
           </div>
 
+          <div
+            class="outfit-tryon__build-badge"
+            data-tryon-build-badge
+            title="3D OUTFIT build"
+          >tryon v20</div>
           <canvas data-tryon-canvas aria-label="3D試着ビューア"></canvas>
           <div class="outfit-tryon__overlay" data-tryon-overlay>
             商品プレビューを表示中。右上の設定から体型を入力すると人体モデルも表示できます。
@@ -126,12 +131,12 @@
   {% comment %}
     STABLE embed UUID for Helio (do NOT retarget in settings_data):
     shopify://apps/3d-outfit/blocks/gallery-tryon-embed/01a194ff-7275-7ff3-bee8-460c38000fea
-    v19 — fetch+parse body-data (no eval); Blob GLTF; product always pre-create
+    v20 — overlay badge; GLTFLoader.parse(ArrayBuffer); force MakeHuman; fetch preload
   {% endcomment %}
-  <script src="{{ 'body-male-data.js' | asset_url | append: '&v=19rca' }}" defer></script>
-  <script src="{{ 'body-female-data.js' | asset_url | append: '&v=19rca' }}" defer></script>
-  <script src="{{ 'try-on.js' | asset_url | append: '&v=19rca' }}" defer></script>
-  <script src="{{ 'gallery-tryon.js' | asset_url | append: '&v=19rca' }}" defer></script>
+  <script src="{{ 'body-male-data.js' | asset_url | append: '&v=20badge' }}" defer></script>
+  <script src="{{ 'body-female-data.js' | asset_url | append: '&v=20badge' }}" defer></script>
+  <script src="{{ 'try-on.js' | asset_url | append: '&v=20badge' }}" defer></script>
+  <script src="{{ 'gallery-tryon.js' | asset_url | append: '&v=20badge' }}" defer></script>
 {% endif %}
 
 {% schema %}

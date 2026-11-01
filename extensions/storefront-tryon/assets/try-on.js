@@ -297,22 +297,52 @@
 
     var bodyGlbCache = Object.create(null);
     var bodyLoadToken = 0;
-    // Cache-bust + version marker — must appear in live status / data attrs.
-    var OUTFIT_BODY_ASSET_V = "19";
+    // Cache-bust + version marker — must appear on overlay badge + status.
+    var OUTFIT_BODY_ASSET_V = "20";
     var BODY_CDN_MALE =
-      "https://cdn.jsdelivr.net/gh/Tochimoto634/3d-outfit@32c807b/public/tryon/bodies/body-male.glb";
+      "https://cdn.jsdelivr.net/gh/Tochimoto634/3d-outfit@cd04df2/public/tryon/bodies/body-male.glb";
     var BODY_CDN_FEMALE =
-      "https://cdn.jsdelivr.net/gh/Tochimoto634/3d-outfit@32c807b/public/tryon/bodies/body-female.glb";
+      "https://cdn.jsdelivr.net/gh/Tochimoto634/3d-outfit@cd04df2/public/tryon/bodies/body-female.glb";
     var bodyDataReady = null;
-    // Capsule only after MakeHuman fails — never silent (status always names it).
-    var ALLOW_CAPSULE_FALLBACK = true;
+    // Force MakeHuman — no silent capsule. On failure: clear error on badge/status.
+    var ALLOW_CAPSULE_FALLBACK = false;
+    var tryOnScriptUrl = "";
 
     try {
       root.setAttribute("data-outfit-body-v", OUTFIT_BODY_ASSET_V);
       root.__outfitTryOnBuild = OUTFIT_BODY_ASSET_V;
+      var nodesBoot = document.querySelectorAll("script[src]");
+      for (var ib = 0; ib < nodesBoot.length; ib++) {
+        var sb = nodesBoot[ib].getAttribute("src") || "";
+        if (/try-on\.js(\?|$)/.test(sb)) {
+          tryOnScriptUrl = sb;
+          break;
+        }
+      }
+      root.__outfitTryOnScriptUrl = tryOnScriptUrl;
+      root.setAttribute("data-tryon-script", tryOnScriptUrl.slice(0, 180));
     } catch (errBoot) {
       /* ignore */
     }
+
+    function updateBuildBadge(extra) {
+      var el =
+        root.querySelector("[data-tryon-build-badge]") ||
+        document.querySelector("[data-tryon-build-badge]");
+      if (!el) return;
+      var src = root.__outfitBodySource || "";
+      var line = "tryon v" + OUTFIT_BODY_ASSET_V;
+      if (src === "makehuman" || src === "makehuman-cdn") line += " · MakeHuman";
+      else if (src === "capsule-fallback") line += " · CAPSULE";
+      else if (src && src.indexOf("error") === 0) line += " · ERR";
+      else if (extra) line += " · " + extra;
+      el.textContent = line;
+      el.setAttribute("data-body-source", src || "");
+      if (tryOnScriptUrl) el.setAttribute("title", tryOnScriptUrl);
+      el.classList.toggle("is-error", !!(src && src.indexOf("error") === 0));
+      el.classList.toggle("is-ok", src === "makehuman" || src === "makehuman-cdn");
+    }
+    updateBuildBadge("boot");
 
     function tryOnScriptBaseUrl() {
       var nodes = document.querySelectorAll("script[src]");
@@ -331,20 +361,30 @@
       return url + (url.indexOf("?") >= 0 ? "&" : "?") + "v=" + OUTFIT_BODY_ASSET_V;
     }
 
-    /** Large data: URLs break GLTFLoader — use Blob object URLs instead. */
-    function toLoaderUrl(url) {
-      if (!url || String(url).indexOf("data:") !== 0) return url;
+    /** Decode data:model/gltf-binary;base64,… → ArrayBuffer (CSP-safe; no blob:/data: fetch). */
+    function dataUrlToArrayBuffer(url) {
+      if (!url || String(url).indexOf("data:") !== 0) return null;
       try {
         var parts = String(url).split(",");
-        var meta = parts[0] || "";
         var b64 = parts.slice(1).join(",");
         var bin = atob(b64);
         var bytes = new Uint8Array(bin.length);
         for (var i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
-        var mime = "model/gltf-binary";
-        var m = /data:([^;,]+)/.exec(meta);
-        if (m && m[1]) mime = m[1];
-        return URL.createObjectURL(new Blob([bytes], { type: mime }));
+        return bytes.buffer;
+      } catch (err) {
+        return null;
+      }
+    }
+
+    /** Legacy helper — prefer parseArrayBuffer; blob: may be CSP-blocked on Shopify. */
+    function toLoaderUrl(url) {
+      if (!url || String(url).indexOf("data:") !== 0) return url;
+      try {
+        var buf = dataUrlToArrayBuffer(url);
+        if (!buf) return url;
+        return URL.createObjectURL(
+          new Blob([buf], { type: "model/gltf-binary" }),
+        );
       } catch (err) {
         return url;
       }
@@ -562,9 +602,30 @@
 
     function loadBodyGltf(url) {
       if (bodyGlbCache[url]) return Promise.resolve(bodyGlbCache[url]);
+      var loader = new GLTFLoader();
+      // Prefer in-memory parse — Shopify CSP often blocks blob:/data: XHR used by loader.load.
+      var ab = dataUrlToArrayBuffer(url);
+      if (ab) {
+        return new Promise(function (resolve, reject) {
+          try {
+            loader.parse(
+              ab,
+              "",
+              function (gltf) {
+                bodyGlbCache[url] = gltf;
+                resolve(gltf);
+              },
+              function (err) {
+                reject(err || new Error("GLTFLoader.parse failed"));
+              },
+            );
+          } catch (errParse) {
+            reject(errParse);
+          }
+        });
+      }
       var loaderUrl = toLoaderUrl(url);
       return new Promise(function (resolve, reject) {
-        var loader = new GLTFLoader();
         loader.load(
           loaderUrl,
           function (gltf) {
@@ -638,9 +699,16 @@
         } catch (err) {
           /* ignore */
         }
+        updateBuildBadge(source);
         fitVisibleContent();
         try {
-          console.info("[outfit-tryon] body source =", source, detail || "");
+          console.info(
+            "[outfit-tryon] body source =",
+            source,
+            detail || "",
+            "script=",
+            tryOnScriptUrl || "(unknown)",
+          );
         } catch (err2) {
           /* ignore */
         }
@@ -1037,7 +1105,7 @@
           );
         } else if (String(src).indexOf("error") === 0) {
           this.setStatus(
-            "人体の読み込みに失敗。商品メッシュのみ表示中。" +
+            "⚠ MakeHuman読込失敗（カプセルなし）。商品メッシュのみ。" +
               tag +
               (bodyResult.detail ? " " + bodyResult.detail : ""),
           );
@@ -1065,6 +1133,7 @@
           this.hideOverlay();
           resizeWhenVisible();
           fitVisibleContent();
+          updateBuildBadge("product");
           this.setStatus(
             "商品プレビュー（人体モデルは設定から作成） [tryon v" +
               OUTFIT_BODY_ASSET_V +
@@ -1074,6 +1143,7 @@
           try {
             garmentGroup.visible = true;
             this.hideOverlay();
+            updateBuildBadge("error");
             this.setStatus(
               "商品プレビュー初期化エラー [tryon v" +
                 OUTFIT_BODY_ASSET_V +

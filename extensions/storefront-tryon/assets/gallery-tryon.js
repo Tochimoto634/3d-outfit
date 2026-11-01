@@ -6,22 +6,44 @@
   "use strict";
 
   var MARK = "data-outfit-gallery-injected";
-  // Eager-load MakeHuman body data (Shopify CDN siblings / config).
+  // Eager-load MakeHuman body data via fetch+regex (no eval; Helio CSP-safe).
   (function preloadBodyData() {
-    function add(url) {
-      if (!url || document.querySelector('script[data-outfit-body-src="' + url + '"]')) return;
-      var s = document.createElement("script");
-      s.src = url.indexOf("v=") >= 0 ? url : url + (url.indexOf("?") >= 0 ? "&" : "?") + "v=19rca";
-      s.async = true;
-      s.setAttribute("data-outfit-body-src", s.src);
-      document.head.appendChild(s);
+    function bust(url) {
+      if (!url) return url;
+      if (/[?&]v=/.test(url)) return url;
+      return url + (url.indexOf("?") >= 0 ? "&" : "?") + "v=20badge";
+    }
+    function applyBodyDataText(text, marker) {
+      if (!text || !marker) return false;
+      var re = new RegExp(
+        marker.replace(/[.*+?^${}()|[\]\\]/g, "\\$&") + '\\s*=\\s*"(data:[^"]*)"',
+      );
+      var m = text.match(re);
+      if (!m || !m[1]) return false;
+      window[marker] = m[1];
+      return true;
+    }
+    function fetchOne(url, marker) {
+      if (!url || window[marker]) return;
+      url = bust(url);
+      fetch(url, { credentials: "omit", mode: "cors", cache: "no-cache" })
+        .then(function (res) {
+          if (!res.ok) throw new Error("body-data " + res.status);
+          return res.text();
+        })
+        .then(function (text) {
+          applyBodyDataText(text, marker);
+        })
+        .catch(function () {
+          /* try-on.js ensureBodyDataScripts retries */
+        });
     }
     try {
       var cfgNode = document.querySelector("[data-outfit-gallery-config]");
       if (cfgNode) {
         var cfg = JSON.parse(cfgNode.textContent || "{}");
-        if (cfg.bodyMaleData) add(cfg.bodyMaleData);
-        if (cfg.bodyFemaleData) add(cfg.bodyFemaleData);
+        if (cfg.bodyMaleData) fetchOne(cfg.bodyMaleData, "__OutfitBodyMaleGlb");
+        if (cfg.bodyFemaleData) fetchOne(cfg.bodyFemaleData, "__OutfitBodyFemaleGlb");
       }
     } catch (e) {}
     var nodes = document.querySelectorAll("script[src]");
@@ -29,8 +51,8 @@
       var src = nodes[i].getAttribute("src") || "";
       if (/try-on\.js/.test(src)) {
         var base = src.replace(/try-on\.js.*/, "");
-        add(base + "body-male-data.js");
-        add(base + "body-female-data.js");
+        fetchOne(base + "body-male-data.js", "__OutfitBodyMaleGlb");
+        fetchOne(base + "body-female-data.js", "__OutfitBodyFemaleGlb");
         break;
       }
     }

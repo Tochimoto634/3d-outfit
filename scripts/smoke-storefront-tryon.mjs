@@ -145,19 +145,25 @@ assert.doesNotMatch(tryOnJs, /CONTENT_SCALE\s*=\s*1\.5/);
 assert.match(tryOnJs, /mountMakeHumanBody|__OutfitBodyMaleGlb/);
 assert.match(tryOnJs, /cdn\.jsdelivr\.net\/gh\/Tochimoto634\/3d-outfit/);
 assert.match(tryOnJs, /ensureBodyDataScripts|BODY_CDN_MALE/);
-assert.match(tryOnJs, /ALLOW_CAPSULE_FALLBACK\s*=\s*true/);
-assert.match(tryOnJs, /OUTFIT_BODY_ASSET_V\s*=\s*"19"/);
-assert.match(tryOnJs, /applyBodyDataText|fetchBodyDataFile|toLoaderUrl|createObjectURL/);
+assert.match(tryOnJs, /ALLOW_CAPSULE_FALLBACK\s*=\s*false/);
+assert.match(tryOnJs, /OUTFIT_BODY_ASSET_V\s*=\s*"20"/);
+assert.match(tryOnJs, /applyBodyDataText|fetchBodyDataFile|dataUrlToArrayBuffer|loader\.parse/);
 assert.match(tryOnJs, /applyBodyDataText/);
 assert.match(tryOnJs, /tryOnScriptBaseUrl|body-male-data\.js/);
+assert.match(tryOnJs, /updateBuildBadge|data-tryon-build-badge/);
 assert.match(tryOnJs, /rebuildCapsuleMannequin|capsule-fallback/);
 assert.match(tryOnJs, /showProductOnlyPreview/);
-assert.match(galleryEmbed, /v=19rca/);
+assert.match(galleryEmbed, /v=20badge/);
+assert.match(galleryEmbed, /data-tryon-build-badge/);
+assert.match(galleryEmbed, /tryon v20/);
 assert.match(galleryEmbed, /01a194ff-7275-7ff3-bee8-460c38000fea/);
 assert.match(galleryEmbed, /data-outfit-gallery/);
 assert.match(galleryEmbed, /body-male-data\.js/);
 assert.match(galleryEmbed, /body-female-data\.js/);
 assert.match(liquid, /body-male-data\.js/);
+assert.match(liquid, /data-tryon-build-badge/);
+assert.match(tryOnCss, /outfit-tryon__build-badge/);
+assert.match(galleryJs, /applyBodyDataText|fetchOne|v=20badge/);
 const bodyMaleData = path.join(
   root,
   "extensions/storefront-tryon/assets/body-male-data.js",

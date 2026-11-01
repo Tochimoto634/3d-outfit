@@ -238,6 +238,38 @@
   aspect-ratio: 1 / 1;
 }
 
+/* Always-visible build stamp — Helio slideshow clips bottom status; badge lives IN canvas. */
+.outfit-tryon__build-badge {
+  position: absolute;
+  top: 0.55rem;
+  left: 0.55rem;
+  z-index: 8;
+  max-width: calc(100% - 3.5rem);
+  padding: 0.4rem 0.65rem;
+  border-radius: 4px;
+  background: #111;
+  color: #fff;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 0.95rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  line-height: 1.2;
+  pointer-events: none;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.28);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.outfit-tryon__build-badge.is-ok {
+  background: #1f4b3a;
+}
+
+.outfit-tryon__build-badge.is-error {
+  background: #8a1f1f;
+  white-space: normal;
+}
+
 .outfit-tryon__layer-toggles {
   position: absolute;
   left: 0.55rem;
