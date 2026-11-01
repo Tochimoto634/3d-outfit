@@ -433,7 +433,7 @@
     var bodyGlbCache = Object.create(null);
     var bodyLoadToken = 0;
     // Cache-bust + version marker — must appear on overlay badge + status.
-    var OUTFIT_BODY_ASSET_V = "22-CAT";
+    var OUTFIT_BODY_ASSET_V = "22-CAT2";
     var BODY_CDN_MALE =
       "https://cdn.jsdelivr.net/gh/Tochimoto634/3d-outfit@cd04df2/public/tryon/bodies/body-male.glb";
     var BODY_CDN_FEMALE =
