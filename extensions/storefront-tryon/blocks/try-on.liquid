@@ -118,10 +118,13 @@
     <summary>表示の制限事項</summary>
     <ul data-tryon-limitations>
       <li>実 TRELLIS 生成は未接続のため、服はプレースホルダ（布プロキシ）の場合があります。</li>
-      <li>マネキンは身長・体重などからの簡易パラメトリック体型です。</li>
+      <li>人体は MakeHuman/MPFB 系 CC0 メッシュを身長・体重・性別でスケールしたプレビューです。</li>
     </ul>
   </details>
 </div>
+
+<script src="{{ 'body-male-data.js' | asset_url }}" defer></script>
+<script src="{{ 'body-female-data.js' | asset_url }}" defer></script>
 
 {% schema %}
 {

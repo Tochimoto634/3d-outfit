@@ -1,6 +1,7 @@
 /**
  * 3D OUTFIT storefront try-on viewer (Theme App Extension).
- * Parametric mannequin + garment GLB or cloth proxy + 360° turntable.
+ * MakeHuman/MPFB CC0 body GLB (scaled by height/weight/gender) + garment
+ * GLB or cloth proxy + 360° turntable. Capsule fallback if GLB missing.
  */
 (function () {
   "use strict";
@@ -285,29 +286,65 @@
     wireLayerToggles();
 
     var skinMat = new THREE.MeshStandardMaterial({
-      color: 0xd4b39a,
-      roughness: 0.85,
+      color: 0xc9a48a,
+      roughness: 0.72,
       metalness: 0.02,
     });
     var jointMat = new THREE.MeshStandardMaterial({
-      color: 0xc4a48c,
-      roughness: 0.9,
+      color: 0xb89278,
+      roughness: 0.85,
     });
 
+    var bodyGlbCache = Object.create(null);
+    var bodyLoadToken = 0;
+
+    function bodyUrlForGender(gender) {
+      // Prefer theme-legal base64 data URLs (Shopify TAE forbids .glb assets),
+      // then explicit data-body-* / config URLs (app proxy / CDN).
+      var maleEmbedded =
+        typeof window !== "undefined" && window.__OutfitBodyMaleGlb
+          ? window.__OutfitBodyMaleGlb
+          : "";
+      var femaleEmbedded =
+        typeof window !== "undefined" && window.__OutfitBodyFemaleGlb
+          ? window.__OutfitBodyFemaleGlb
+          : "";
+      var male =
+        maleEmbedded ||
+        root.getAttribute("data-body-male") ||
+        (root.__outfitBodyUrls && root.__outfitBodyUrls.male) ||
+        "";
+      var female =
+        femaleEmbedded ||
+        root.getAttribute("data-body-female") ||
+        (root.__outfitBodyUrls && root.__outfitBodyUrls.female) ||
+        "";
+      if (gender === "female") return female || male;
+      return male || female;
+    }
+
+    function clearMannequin() {
+      while (mannequinGroup.children.length) {
+        var child = mannequinGroup.children.pop();
+        child.traverse(function (obj) {
+          if (obj.geometry) obj.geometry.dispose();
+        });
+      }
+      mannequinGroup.position.set(0, 0, 0);
+      mannequinGroup.scale.set(1, 1, 1);
+      mannequinGroup.rotation.set(0, 0, 0);
+    }
+
     function limb(radius, length, mat) {
-      var mesh = new THREE.Mesh(
+      return new THREE.Mesh(
         new THREE.CapsuleGeometry(radius, Math.max(0.01, length - radius * 2), 4, 10),
         mat || skinMat,
       );
-      return mesh;
     }
 
-    function rebuildMannequin(p) {
-      while (mannequinGroup.children.length) {
-        var child = mannequinGroup.children.pop();
-        if (child.geometry) child.geometry.dispose();
-      }
-
+    /** Capsule fallback when MakeHuman GLB is unavailable. */
+    function rebuildCapsuleMannequin(p) {
+      clearMannequin();
       var s = p.overallScale;
       var torsoH = p.torsoLength;
       var legH = p.legLength;
@@ -317,31 +354,21 @@
       var shoulderW = 0.28 * p.shoulderScale;
       var limbR = 0.045 * p.limbThickness;
 
-      // hips
-      var hips = new THREE.Mesh(
-        new THREE.SphereGeometry(hipR, 20, 16),
-        skinMat,
-      );
+      var hips = new THREE.Mesh(new THREE.SphereGeometry(hipR, 20, 16), skinMat);
       hips.position.y = legH;
       hips.scale.set(1.15, 0.7, 0.85);
       mannequinGroup.add(hips);
 
-      // torso (lathe-like via scaled capsule)
       var torso = limb((chestR + waistR) / 2, torsoH, skinMat);
       torso.position.y = legH + torsoH * 0.55;
       torso.scale.set(1.05, 1, 0.85);
       mannequinGroup.add(torso);
 
-      // chest plate for bust emphasis
-      var chest = new THREE.Mesh(
-        new THREE.SphereGeometry(chestR * 0.95, 18, 14),
-        skinMat,
-      );
+      var chest = new THREE.Mesh(new THREE.SphereGeometry(chestR * 0.95, 18, 14), skinMat);
       chest.position.y = legH + torsoH * 0.75;
       chest.scale.set(1.2, 0.7, 0.75);
       mannequinGroup.add(chest);
 
-      // head
       var head = new THREE.Mesh(new THREE.SphereGeometry(0.11 * s, 20, 16), skinMat);
       head.position.y = legH + torsoH + 0.16 * s;
       mannequinGroup.add(head);
@@ -349,7 +376,6 @@
       neck.position.y = legH + torsoH + 0.04 * s;
       mannequinGroup.add(neck);
 
-      // shoulders / arms
       [-1, 1].forEach(function (side) {
         var shoulder = new THREE.Mesh(
           new THREE.SphereGeometry(0.055 * p.shoulderScale, 12, 10),
@@ -357,27 +383,16 @@
         );
         shoulder.position.set(side * shoulderW * 0.55, legH + torsoH * 0.85, 0);
         mannequinGroup.add(shoulder);
-
         var upper = limb(limbR, 0.28 * s);
-        upper.position.set(
-          side * (shoulderW * 0.55 + 0.02),
-          legH + torsoH * 0.55,
-          0,
-        );
+        upper.position.set(side * (shoulderW * 0.55 + 0.02), legH + torsoH * 0.55, 0);
         upper.rotation.z = side * 0.12;
         mannequinGroup.add(upper);
-
         var lower = limb(limbR * 0.9, 0.26 * s);
-        lower.position.set(
-          side * (shoulderW * 0.6 + 0.04),
-          legH + torsoH * 0.22,
-          0.02,
-        );
+        lower.position.set(side * (shoulderW * 0.6 + 0.04), legH + torsoH * 0.22, 0.02);
         lower.rotation.z = side * 0.05;
         mannequinGroup.add(lower);
       });
 
-      // legs
       [-1, 1].forEach(function (side) {
         var thigh = limb(limbR * 1.15, legH * 0.52);
         thigh.position.set(side * hipR * 0.55, legH * 0.72, 0);
@@ -386,8 +401,95 @@
         calf.position.set(side * hipR * 0.55, legH * 0.28, 0);
         mannequinGroup.add(calf);
       });
+    }
 
-      fitVisibleContent();
+    function loadBodyGltf(url) {
+      if (bodyGlbCache[url]) return Promise.resolve(bodyGlbCache[url]);
+      return new Promise(function (resolve, reject) {
+        var loader = new GLTFLoader();
+        loader.load(
+          url,
+          function (gltf) {
+            bodyGlbCache[url] = gltf;
+            resolve(gltf);
+          },
+          undefined,
+          reject,
+        );
+      });
+    }
+
+    /**
+     * Bake MakeHuman bind-pose into static meshes (no runtime skinning) and
+     * scale by height / BMI / gender biases.
+     */
+    function mountMakeHumanBody(gltf, p) {
+      clearMannequin();
+      var baked = new THREE.Group();
+      var src = gltf.scene;
+      src.updateMatrixWorld(true);
+      src.traverse(function (obj) {
+        if (!obj.isMesh || !obj.geometry) return;
+        var geom = obj.geometry.clone();
+        geom.applyMatrix4(obj.matrixWorld);
+        if (geom.attributes.normal) geom.computeVertexNormals();
+        var mesh = new THREE.Mesh(geom, skinMat);
+        mesh.castShadow = false;
+        mesh.receiveShadow = false;
+        baked.add(mesh);
+      });
+      if (!baked.children.length) {
+        throw new Error("empty body glb");
+      }
+      mannequinGroup.add(baked);
+      mannequinGroup.updateMatrixWorld(true);
+
+      var box = new THREE.Box3().setFromObject(mannequinGroup);
+      var size = new THREE.Vector3();
+      box.getSize(size);
+      var baseH = Math.max(size.y, 0.01);
+      var heightScale = (p.heightM || 1.7) / baseH;
+      var widthScale = clamp(p.limbThickness || 1, 0.78, 1.38);
+      if (p.gender === "male") widthScale *= 1.04;
+      else if (p.gender === "female") widthScale *= 0.98;
+      // Soft shoulder/hip: slightly wider X for male, Z for female hips feel.
+      var sx = heightScale * widthScale * (p.gender === "female" ? 0.97 : 1.03);
+      var sy = heightScale;
+      var sz = heightScale * widthScale * (p.gender === "female" ? 1.04 : 0.98);
+      mannequinGroup.scale.set(sx, sy, sz);
+      mannequinGroup.updateMatrixWorld(true);
+
+      box.setFromObject(mannequinGroup);
+      var center = new THREE.Vector3();
+      box.getCenter(center);
+      mannequinGroup.position.x -= center.x;
+      mannequinGroup.position.z -= center.z;
+      mannequinGroup.position.y -= box.min.y;
+    }
+
+    function rebuildMannequin(p) {
+      var url = bodyUrlForGender(p.gender);
+      var token = ++bodyLoadToken;
+      function finish(source) {
+        root.__outfitBodySource = source;
+        fitVisibleContent();
+        return { source: source };
+      }
+      if (!url) {
+        rebuildCapsuleMannequin(p);
+        return Promise.resolve(finish("capsule"));
+      }
+      return loadBodyGltf(url)
+        .then(function (gltf) {
+          if (token !== bodyLoadToken) return { source: "stale" };
+          mountMakeHumanBody(gltf, p);
+          return finish("makehuman");
+        })
+        .catch(function () {
+          if (token !== bodyLoadToken) return { source: "stale" };
+          rebuildCapsuleMannequin(p);
+          return finish("capsule-fallback");
+        });
     }
 
     /**
@@ -471,6 +573,47 @@
       }
     }
 
+    /** Cloth / garment anchors from live body bbox (MakeHuman) or capsule props. */
+    function garmentLayout(p) {
+      if (mannequinGroup.children.length) {
+        mannequinGroup.updateMatrixWorld(true);
+        var box = new THREE.Box3().setFromObject(mannequinGroup);
+        var size = new THREE.Vector3();
+        box.getSize(size);
+        var h = Math.max(size.y, 0.01);
+        var minY = box.min.y;
+        return {
+          bodyH: h,
+          hipY: minY + h * 0.52,
+          waistY: minY + h * 0.58,
+          chestY: minY + h * 0.72,
+          neckY: minY + h * 0.82,
+          shirtH: h * 0.28,
+          shoulderW: Math.max(size.x * 0.22, 0.16),
+          chestR: Math.max(size.x * 0.12, 0.12) * (p.chestScale || 1) * 0.55,
+          waistR: Math.max(size.x * 0.1, 0.1) * (p.waistScale || 1) * 0.5,
+          sleeveLen: h * 0.09,
+          collarR: h * 0.045,
+        };
+      }
+      var s = p.overallScale || 1;
+      var torsoH = p.torsoLength || 0.34 * s;
+      var legH = p.legLength || 0.48 * s;
+      return {
+        bodyH: torsoH + legH,
+        hipY: legH,
+        waistY: legH + torsoH * 0.2,
+        chestY: legH + torsoH * 0.72,
+        neckY: legH + torsoH * 0.95,
+        shirtH: torsoH * 0.95,
+        shoulderW: 0.2 * (p.shoulderScale || 1),
+        chestR: 0.155 * (p.chestScale || 1),
+        waistR: 0.13 * (p.waistScale || 1),
+        sleeveLen: 0.14 * s,
+        collarR: 0.08 * s,
+      };
+    }
+
     function addClothProxy(p) {
       clearGarment();
       var color = new THREE.Color(garmentColor);
@@ -480,46 +623,41 @@
         metalness: 0.05,
         side: THREE.DoubleSide,
       });
-      var s = p.overallScale;
-      var torsoH = p.torsoLength;
-      var legH = p.legLength;
-      var chestR = 0.155 * p.chestScale;
+      var L = garmentLayout(p);
       var shirt = new THREE.Mesh(
         new THREE.CylinderGeometry(
-          chestR * 1.05,
-          0.13 * p.waistScale,
-          torsoH * 0.95,
+          L.chestR * 1.05,
+          L.waistR,
+          L.shirtH,
           28,
           1,
           true,
         ),
         clothMat,
       );
-      shirt.position.y = legH + torsoH * 0.5;
+      shirt.position.y = (L.waistY + L.chestY) / 2;
       garmentGroup.add(shirt);
 
-      // Short sleeves — long cylinders inflated product-only AABB / framing.
       [-1, 1].forEach(function (side) {
         var sleeve = new THREE.Mesh(
           new THREE.CylinderGeometry(
-            0.055 * p.limbThickness,
-            0.048 * p.limbThickness,
-            0.14 * s,
+            0.045 * (p.limbThickness || 1),
+            0.04 * (p.limbThickness || 1),
+            L.sleeveLen,
             12,
           ),
           clothMat,
         );
-        sleeve.position.set(side * 0.2 * p.shoulderScale, legH + torsoH * 0.72, 0);
+        sleeve.position.set(side * L.shoulderW, L.chestY, 0);
         sleeve.rotation.z = side * (Math.PI / 2.35);
         garmentGroup.add(sleeve);
       });
 
-      // collar ring
       var collar = new THREE.Mesh(
-        new THREE.TorusGeometry(0.08 * s, 0.015 * s, 8, 20),
+        new THREE.TorusGeometry(L.collarR, L.collarR * 0.18, 8, 20),
         clothMat,
       );
-      collar.position.y = legH + torsoH * 0.95;
+      collar.position.y = L.neckY;
       collar.rotation.x = Math.PI / 2;
       garmentGroup.add(collar);
     }
@@ -528,15 +666,17 @@
       var box = new THREE.Box3().setFromObject(rootObj);
       var size = new THREE.Vector3();
       box.getSize(size);
-      var targetH = (p.torsoLength + p.legLength) * 0.95;
+      var L = garmentLayout(p);
+      var targetH = Math.max(L.shirtH * 1.05, 0.2);
       var scale = size.y > 0.001 ? targetH / size.y : 1;
       rootObj.scale.setScalar(scale);
+      rootObj.updateMatrixWorld(true);
       box.setFromObject(rootObj);
       var center = new THREE.Vector3();
       box.getCenter(center);
       rootObj.position.x -= center.x;
       rootObj.position.z -= center.z;
-      rootObj.position.y -= box.min.y;
+      rootObj.position.y += L.chestY - center.y;
     }
 
     function loadGarmentGlb(url, p) {
@@ -649,7 +789,8 @@
       setOrbitEnabled: setOrbitEnabled,
       applyTryOn: async function (body, asset) {
         var p = body.mannequin || buildProportions(body);
-        rebuildMannequin(p);
+        this.setStatus("人体モデルを読み込み中…");
+        var bodyResult = await rebuildMannequin(p);
         // After create: both body + product available and visible.
         mannequinGroup.visible = true;
         garmentGroup.visible = true;
@@ -666,8 +807,13 @@
           );
         } else {
           addClothProxy(p);
+          var bodyNote =
+            bodyResult && bodyResult.source === "makehuman"
+              ? "MakeHuman系人体 + "
+              : "";
           this.setStatus(
-            "実 GLB が無いため布プロキシで試着プレビューしています（TRELLIS 未接続）。",
+            bodyNote +
+              "布プロキシで試着プレビューしています（TRELLIS 未接続）。",
           );
         }
         resizeWhenVisible();
@@ -682,10 +828,7 @@
           weightKg: 60,
           gender: "unspecified",
         });
-        while (mannequinGroup.children.length) {
-          var child = mannequinGroup.children.pop();
-          if (child.geometry) child.geometry.dispose();
-        }
+        clearMannequin();
         addClothProxy(p);
         mannequinGroup.visible = false;
         garmentGroup.visible = true;
@@ -966,11 +1109,17 @@
           );
         } else if (tryOn && tryOn._offline) {
           viewer.setStatus(
-            "API 未接続のため布プロキシで試着プレビューしています。",
+            (root.__outfitBodySource === "makehuman"
+              ? "MakeHuman系人体 + "
+              : "") +
+              "API 未接続のため布プロキシで試着プレビューしています。",
           );
         } else {
           viewer.setStatus(
-            "実 GLB が無いため布プロキシで試着プレビューしています。",
+            (root.__outfitBodySource === "makehuman"
+              ? "MakeHuman系人体 + "
+              : "") +
+              "実 GLB が無いため布プロキシで試着プレビューしています。",
           );
         }
       } catch (e) {

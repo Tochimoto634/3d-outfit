@@ -142,6 +142,27 @@ assert.match(tryOnJs, /FIT_FILL_BODY\s*=\s*0\.5/);
 assert.match(tryOnJs, /fitVisibleContent/);
 assert.match(tryOnJs, /showProductOnlyPreview|setLayerVisible/);
 assert.doesNotMatch(tryOnJs, /CONTENT_SCALE\s*=\s*1\.5/);
+assert.match(tryOnJs, /mountMakeHumanBody|__OutfitBodyMaleGlb/);
+assert.match(tryOnJs, /rebuildCapsuleMannequin/);
+assert.match(galleryEmbed, /body-male-data\.js/);
+assert.match(galleryEmbed, /body-female-data\.js/);
+assert.match(liquid, /body-male-data\.js/);
+const bodyMaleData = path.join(
+  root,
+  "extensions/storefront-tryon/assets/body-male-data.js",
+);
+const bodyFemaleData = path.join(
+  root,
+  "extensions/storefront-tryon/assets/body-female-data.js",
+);
+assert.ok(fs.existsSync(bodyMaleData), "body-male-data.js missing");
+assert.ok(fs.existsSync(bodyFemaleData), "body-female-data.js missing");
+assert.ok(fs.statSync(bodyMaleData).size > 100_000, "body-male-data.js too small");
+assert.ok(
+  fs.existsSync(path.join(root, "public/tryon/bodies/body-male.glb")),
+  "public body-male.glb missing",
+);
+assert.ok(fs.existsSync(path.join(root, "docs/makehuman-body-assets.md")));
 assert.match(tryOnCss, /is-drawer-open/);
 assert.match(tryOnCss, /touch-action:\s*none/);
 assert.doesNotMatch(
@@ -165,6 +186,7 @@ console.log("smoke:storefront-tryon OK", {
   localFirstCreate: true,
   layerToggles: true,
   fitProduct75Body50: true,
+  makeHumanBodyGlb: true,
   drawerInputShield: true,
   orbitCanvasShield: true,
 });

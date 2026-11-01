@@ -39,7 +39,15 @@
     if (!tpl || !tpl.content) return null;
     var frag = tpl.content.cloneNode(true);
     var root = frag.querySelector("[data-outfit-tryon]");
-    return root || null;
+    if (!root) return null;
+    if (cfg.bodyMale) root.setAttribute("data-body-male", cfg.bodyMale);
+    if (cfg.bodyFemale) root.setAttribute("data-body-female", cfg.bodyFemale);
+    if (cfg.threeBundle) root.setAttribute("data-three-bundle", cfg.threeBundle);
+    root.__outfitBodyUrls = {
+      male: cfg.bodyMale || root.getAttribute("data-body-male") || "",
+      female: cfg.bodyFemale || root.getAttribute("data-body-female") || "",
+    };
+    return root;
   }
 
   function makeThumbLabel(heading) {

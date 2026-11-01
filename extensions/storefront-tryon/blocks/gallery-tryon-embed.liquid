@@ -18,6 +18,8 @@
       "proxyPath": "/apps/3d-outfit/tryon",
       "apiBase": {{ block.settings.api_base_url | json }},
       "threeBundle": {{ 'try-on-three.bundle.js' | asset_url | json }},
+      "bodyMaleData": {{ 'body-male-data.js' | asset_url | json }},
+      "bodyFemaleData": {{ 'body-female-data.js' | asset_url | json }},
       "garmentColor": {{ block.settings.garment_color | default: '#3d5a80' | json }},
       "defaultHeight": {{ block.settings.default_height | default: 170 }},
       "defaultWeight": {{ block.settings.default_weight | default: 60 }},
@@ -115,12 +117,14 @@
         <summary>表示の制限事項</summary>
         <ul data-tryon-limitations>
           <li>実 TRELLIS 生成は未接続のため、服はプレースホルダの場合があります。</li>
-          <li>マネキンは身長・体重などからの簡易パラメトリック体型です。</li>
+          <li>人体は MakeHuman/MPFB 系 CC0 メッシュを身長・体重・性別でスケールしたプレビューです。</li>
         </ul>
       </details>
     </div>
   </template>
 
+  <script src="{{ 'body-male-data.js' | asset_url }}" defer></script>
+  <script src="{{ 'body-female-data.js' | asset_url }}" defer></script>
   <script src="{{ 'try-on.js' | asset_url }}" defer></script>
   <script src="{{ 'gallery-tryon.js' | asset_url }}" defer></script>
 {% endif %}
