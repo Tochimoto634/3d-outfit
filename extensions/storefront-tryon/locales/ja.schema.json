@@ -1,0 +1,27 @@
+{
+  "name": "3D試着ビューア",
+  "settings": {
+    "heading": {
+      "label": "見出し"
+    },
+    "subheading": {
+      "label": "説明文"
+    },
+    "api_base_url": {
+      "label": "API ベース URL（任意・開発用）",
+      "info": "空欄なら App Proxy (/apps/3d-outfit/tryon) を使います。shopify app dev のアプリ URL を入れると CORS API 経由でも取得できます。"
+    },
+    "auto_rotate": {
+      "label": "初期状態で自動回転"
+    },
+    "garment_color": {
+      "label": "布プロキシの色"
+    },
+    "default_height": {
+      "label": "初期身長 (cm)"
+    },
+    "default_weight": {
+      "label": "初期体重 (kg)"
+    }
+  }
+}

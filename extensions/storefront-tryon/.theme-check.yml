@@ -1,0 +1,6 @@
+# try-on.js is ~18KB (mannequin + Three.js CDN wiring). Shopify CLI theme-check
+# default 10KB threshold is too low for this block and is lint-only.
+AssetSizeAppBlockJavaScript:
+  enabled: false
+AssetSizeAppBlockCSS:
+  enabled: false

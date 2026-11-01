@@ -29,3 +29,10 @@ use_legacy_install_flow = false
 
 [auth]
 redirect_urls = [ "https://example.com/api/auth" ]
+
+# Storefront Theme App Extension → `/apps/3d-outfit/*` on the shop
+# Forwards to `{application_url}/api/proxy/*` (signed).
+[app_proxy]
+url = "https://example.com/api/proxy"
+subpath = "3d-outfit"
+prefix = "apps"

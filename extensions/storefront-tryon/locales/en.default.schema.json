@@ -1,0 +1,27 @@
+{
+  "name": "3D try-on viewer",
+  "settings": {
+    "heading": {
+      "label": "Heading"
+    },
+    "subheading": {
+      "label": "Description"
+    },
+    "api_base_url": {
+      "label": "API base URL (optional, for development)",
+      "info": "Leave blank to use App Proxy (/apps/3d-outfit/tryon). Set the shopify app dev URL to use the CORS API."
+    },
+    "auto_rotate": {
+      "label": "Auto-rotate by default"
+    },
+    "garment_color": {
+      "label": "Cloth proxy color"
+    },
+    "default_height": {
+      "label": "Default height (cm)"
+    },
+    "default_weight": {
+      "label": "Default weight (kg)"
+    }
+  }
+}
