@@ -440,7 +440,7 @@
       "https://cdn.jsdelivr.net/gh/Tochimoto634/3d-outfit@cd04df2/public/tryon/bodies/body-female.glb";
     // Pin to commit with valid (JSON space-padded) sample-tee.glb
     var SAMPLE_GARMENT_CDN =
-      "https://cdn.jsdelivr.net/gh/Tochimoto634/3d-outfit@aa9573a/public/tryon/garments/sample-tee.glb";
+      "https://cdn.jsdelivr.net/gh/Tochimoto634/3d-outfit@a6f105f428cf455ad3a8f33ee4573aa6f6f8559d/public/tryon/garments/sample-tee.glb";
     var bodyDataReady = null;
     // Force MakeHuman — no silent capsule. On failure: clear error on badge/status.
     var ALLOW_CAPSULE_FALLBACK = false;
