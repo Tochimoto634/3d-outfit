@@ -6,7 +6,7 @@
 
 /** jsDelivr pin — bump when sample mesh changes. GLB JSON chunk must be space-padded (not NUL). */
 export const SAMPLE_GARMENT_CDN =
-  "https://cdn.jsdelivr.net/gh/Tochimoto634/3d-outfit@cursor/gallery-tryon-slide-a47d/public/tryon/garments/sample-tee.glb";
+  "https://cdn.jsdelivr.net/gh/Tochimoto634/3d-outfit@a6f105f/public/tryon/garments/sample-tee.glb";
 
 export const SAMPLE_GARMENT_KIND = "base" as const;
 export const SAMPLE_GARMENT_MIME = "model/gltf-binary";
