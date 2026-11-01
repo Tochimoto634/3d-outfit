@@ -130,7 +130,9 @@
     camera.position.set(0, 1.1, 3.2);
 
     var controls = new OrbitControls(camera, canvas);
-    controls.enableDamping = true;
+    // Instant stop on release — no post-drag inertia/coasting.
+    controls.enableDamping = false;
+    controls.dampingFactor = 0;
     controls.target.set(0, 0.95, 0);
     controls.autoRotate = false;
     controls.enablePan = false;
@@ -176,25 +178,46 @@
       controls.maxPolarAngle = lockedPolar;
     }
 
-    scene.add(new THREE.AmbientLight(0xffffff, 0.75));
-    var key = new THREE.DirectionalLight(0xffffff, 1.05);
-    key.position.set(2.5, 4, 2);
-    scene.add(key);
-    var fill = new THREE.DirectionalLight(0xfff2e0, 0.45);
-    fill.position.set(-2, 1.5, -1);
-    scene.add(fill);
+    // SSENSE-like seamless studio: neutral off-white, soft even light,
+    // minimal contact shadow only (no beige stage disc / warm fill).
+    var studioBg = 0xf2f2f2;
+    scene.background = new THREE.Color(studioBg);
+    renderer.setClearColor(studioBg, 1);
 
-    var ground = new THREE.Mesh(
-      new THREE.CircleGeometry(1.4, 48),
-      new THREE.MeshStandardMaterial({
-        color: 0xcfc6b8,
-        roughness: 0.95,
-        metalness: 0,
+    scene.add(new THREE.AmbientLight(0xffffff, 0.95));
+    var key = new THREE.DirectionalLight(0xffffff, 0.55);
+    key.position.set(0.35, 5.2, 2.4);
+    scene.add(key);
+    var fill = new THREE.DirectionalLight(0xffffff, 0.32);
+    fill.position.set(-2.8, 2.2, -0.6);
+    scene.add(fill);
+    var rim = new THREE.DirectionalLight(0xffffff, 0.18);
+    rim.position.set(0.2, 2.5, -3.2);
+    scene.add(rim);
+
+    var shadowCanvas = document.createElement("canvas");
+    shadowCanvas.width = 256;
+    shadowCanvas.height = 256;
+    var sctx = shadowCanvas.getContext("2d");
+    var grad = sctx.createRadialGradient(128, 128, 8, 128, 128, 124);
+    grad.addColorStop(0, "rgba(0,0,0,0.16)");
+    grad.addColorStop(0.35, "rgba(0,0,0,0.06)");
+    grad.addColorStop(1, "rgba(0,0,0,0)");
+    sctx.fillStyle = grad;
+    sctx.fillRect(0, 0, 256, 256);
+    var shadowTex = new THREE.CanvasTexture(shadowCanvas);
+    shadowTex.colorSpace = THREE.SRGBColorSpace || THREE.sRGBEncoding;
+    var contactShadow = new THREE.Mesh(
+      new THREE.PlaneGeometry(1.55, 1.05),
+      new THREE.MeshBasicMaterial({
+        map: shadowTex,
+        transparent: true,
+        depthWrite: false,
       }),
     );
-    ground.rotation.x = -Math.PI / 2;
-    ground.position.y = 0;
-    scene.add(ground);
+    contactShadow.rotation.x = -Math.PI / 2;
+    contactShadow.position.y = 0.001;
+    scene.add(contactShadow);
 
     var turntable = new THREE.Group();
     scene.add(turntable);

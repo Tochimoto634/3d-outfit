@@ -4,7 +4,7 @@
   --ot-muted: #5c5854;
   --ot-line: #d9d2c8;
   --ot-accent: #1f4b3a;
-  --ot-stage: #e8e2d8;
+  --ot-stage: #f2f2f2;
   --ot-radius: 4px;
   --ot-font: "Hiragino Sans", "Noto Sans JP", "Yu Gothic", sans-serif;
   box-sizing: border-box;
@@ -143,9 +143,9 @@
   width: 100%;
   aspect-ratio: 1 / 1;
   max-height: 520px;
-  background:
-    linear-gradient(180deg, #f3eee6 0%, var(--ot-stage) 55%, #d8d0c4 100%);
-  border: 1px solid var(--ot-line);
+  /* SSENSE-like seamless studio — neutral off-white, no beige stage gradient */
+  background: var(--ot-stage);
+  border: 1px solid #e4e4e4;
   overflow: hidden;
 }
 
@@ -167,8 +167,8 @@
   justify-content: center;
   padding: 1.5rem;
   text-align: center;
-  color: var(--ot-muted);
-  background: rgba(246, 244, 241, 0.72);
+  color: #6b6b6b;
+  background: rgba(242, 242, 242, 0.78);
   font-size: 0.95rem;
   line-height: 1.5;
   pointer-events: none;
@@ -212,9 +212,7 @@
   flex-direction: column;
   gap: 0.55rem;
   border: none;
-  background:
-    radial-gradient(120% 90% at 0% 0%, #ebe4d8 0%, transparent 50%),
-    linear-gradient(180deg, #faf8f5 0%, #f1ece4 100%);
+  background: #f2f2f2;
 }
 
 .outfit-tryon--gallery .visually-hidden {
