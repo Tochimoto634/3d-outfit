@@ -23,6 +23,7 @@
     "smoke:size-chart": "node scripts/smoke-size-chart.mjs",
     "smoke:model-photo": "node scripts/smoke-model-photo.mjs",
     "smoke:create-button": "tsx scripts/smoke-create-button-state.mjs",
+    "smoke:seg-prompt": "tsx scripts/smoke-seg-prompt.mjs",
     "smoke:storefront-tryon": "tsx scripts/smoke-storefront-tryon.mjs",
     "build:tryon-three": "node scripts/build-tryon-three-bundle.mjs"
   },

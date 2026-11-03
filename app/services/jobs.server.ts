@@ -1,5 +1,9 @@
 import prisma from "../db.server";
 import {
+  effectiveProductTitlePrompt,
+  readManualEditsBlob,
+} from "../lib/product-review";
+import {
   applyManualEdits,
   buildCollectedSnapshot,
   PRODUCT_NODES_QUERY,
@@ -231,22 +235,51 @@ async function upsertAssetStubs(opts: {
 }
 
 export class GenerationBlockedError extends Error {
-  readonly code = "IMAGES_REQUIRED";
+  readonly code: "IMAGES_REQUIRED" | "PROMPT_REQUIRED";
   readonly productTitles: string[];
 
-  constructor(productTitles: string[]) {
-    super(
-      `写真がない商品があるため作成を開始できません: ${productTitles.join(", ")}`,
-    );
+  constructor(
+    productTitles: string[],
+    code: "IMAGES_REQUIRED" | "PROMPT_REQUIRED" = "IMAGES_REQUIRED",
+  ) {
+    const message =
+      code === "PROMPT_REQUIRED"
+        ? `セグメンテーション用プロンプトが空の商品があるため作成を開始できません: ${productTitles.join(", ")}`
+        : `写真がない商品があるため作成を開始できません: ${productTitles.join(", ")}`;
+    super(message);
     this.name = "GenerationBlockedError";
+    this.code = code;
     this.productTitles = productTitles;
   }
+}
+
+/** Products whose Grounding/SAM2 prompt is empty after normalize / saved edit. */
+export function productsMissingTitlePrompt(
+  products: Array<{
+    title: string | null;
+    shopifyProductId: string;
+    manualEditsJson?: string | null;
+  }>,
+): string[] {
+  const missing: string[] = [];
+  for (const p of products) {
+    const manual = readManualEditsBlob(p.manualEditsJson || "{}");
+    const prompt = effectiveProductTitlePrompt(
+      p.title,
+      manual.productTitlePrompt,
+    );
+    if (!prompt) {
+      missing.push(p.title || p.shopifyProductId);
+    }
+  }
+  return missing;
 }
 
 /**
  * Confirm review and kick off RunPod (mock or live) for each product snapshot.
  * Generation uses photos only — size chart is ignored here by design.
- * Blocks when any product has zero images (required for TRELLIS photo input).
+ * Blocks when any product has zero images (required for TRELLIS photo input)
+ * or an empty segmentation prompt (required for Grounding).
  */
 /** Statuses that may kick off (or re-kick) generation from the review UI. */
 const STARTABLE_JOB_STATUSES = new Set([
@@ -274,7 +307,12 @@ export async function confirmAndStartGeneration(jobId: string) {
     })),
   );
   if (missingPhotoTitles.length > 0) {
-    throw new GenerationBlockedError(missingPhotoTitles);
+    throw new GenerationBlockedError(missingPhotoTitles, "IMAGES_REQUIRED");
+  }
+
+  const missingPromptTitles = productsMissingTitlePrompt(job.products);
+  if (missingPromptTitles.length > 0) {
+    throw new GenerationBlockedError(missingPromptTitles, "PROMPT_REQUIRED");
   }
 
   const updated = await prisma.generationJob.update({
@@ -299,9 +337,22 @@ export async function confirmAndStartGeneration(jobId: string) {
     }));
 
     if (imageInputs.length === 0) {
-      throw new GenerationBlockedError([
-        product.title || product.shopifyProductId,
-      ]);
+      throw new GenerationBlockedError(
+        [product.title || product.shopifyProductId],
+        "IMAGES_REQUIRED",
+      );
+    }
+
+    const manual = readManualEditsBlob(product.manualEditsJson || "{}");
+    const productTitlePrompt = effectiveProductTitlePrompt(
+      product.title,
+      manual.productTitlePrompt,
+    );
+    if (!productTitlePrompt) {
+      throw new GenerationBlockedError(
+        [product.title || product.shopifyProductId],
+        "PROMPT_REQUIRED",
+      );
     }
 
     const engineRun = await prisma.engineRun.create({
@@ -314,6 +365,8 @@ export async function confirmAndStartGeneration(jobId: string) {
           productSnapshotId: product.id,
           shopifyProductId: product.shopifyProductId,
           imageCount: imageInputs.length,
+          product_title: product.title || null,
+          product_title_prompt: productTitlePrompt,
           // Size chart intentionally omitted from generation payload
           photoOnly: true,
           mock: isRunPodMockMode(),
@@ -327,6 +380,8 @@ export async function confirmAndStartGeneration(jobId: string) {
         images: imageInputs,
         meta: {
           shopifyProductId: product.shopifyProductId,
+          product_title: product.title || null,
+          product_title_prompt: productTitlePrompt,
           // Size chart intentionally omitted
         },
       });
@@ -547,6 +602,10 @@ export async function updateProductManualEdits(
       typeof manualEdits.hasModelPhotoOverride === "boolean"
         ? manualEdits.hasModelPhotoOverride
         : (prev.hasModelPhotoOverride ?? null),
+    productTitlePrompt:
+      typeof manualEdits.productTitlePrompt === "string"
+        ? manualEdits.productTitlePrompt.trim()
+        : (prev.productTitlePrompt ?? null),
     updatedAt: new Date().toISOString(),
   };
 
@@ -659,9 +718,11 @@ export function getJobStartBlockers(
     shopifyProductId: string;
     missingFlagsJson: string;
     imagesJson: string;
+    manualEditsJson?: string | null;
   }>,
 ) {
   const missingImages = productsMissingImages(products);
+  const missingPrompts = productsMissingTitlePrompt(products);
   const softWarnings: string[] = [];
   for (const p of products) {
     let flags: string[] = [];
@@ -682,8 +743,9 @@ export function getJobStartBlockers(
     }
   }
   return {
-    blocked: missingImages.length > 0,
+    blocked: missingImages.length > 0 || missingPrompts.length > 0,
     missingImages,
+    missingPrompts,
     softWarnings,
   };
 }

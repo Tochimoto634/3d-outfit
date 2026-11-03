@@ -39,6 +39,30 @@ check("review + missing images → blocked_images", () => {
   assert.equal(createStartIsSubmittable(state), false);
 });
 
+check("review + empty segmentation prompt → blocked_prompt", () => {
+  const state = resolveCreateStartUiState({
+    jobStatus: "review",
+    engineRuns: [],
+    imagesBlocked: false,
+    promptBlocked: true,
+    missingPromptTitles: ["Untitled"],
+  });
+  assert.equal(state.kind, "blocked_prompt");
+  assert.equal(createStartIsSubmittable(state), false);
+});
+
+check("images block wins over empty prompt", () => {
+  const state = resolveCreateStartUiState({
+    jobStatus: "review",
+    engineRuns: [],
+    imagesBlocked: true,
+    missingImageTitles: ["Tee"],
+    promptBlocked: true,
+    missingPromptTitles: ["Tee"],
+  });
+  assert.equal(state.kind, "blocked_images");
+});
+
 check("generating + submitted mock → in_progress (not silent disable)", () => {
   const state = resolveCreateStartUiState({
     jobStatus: "generating",

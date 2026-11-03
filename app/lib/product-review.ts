@@ -202,8 +202,95 @@ export type ManualEditsView = {
    * `null` / omitted → use heuristic detection from alt / filename / mediaRole.
    */
   hasModelPhotoOverride?: boolean | null;
+  /**
+   * Operator-confirmed Grounding/SAM2 text (セグメンテーション用プロンプト).
+   * When omitted, Admin UI / submit fall back to normalizeProductTitlePrompt(title).
+   */
+  productTitlePrompt?: string | null;
   updatedAt?: string;
 };
+
+/** Promo / noise tokens stripped when deriving a short Grounding prompt from a Shopify title. */
+const TITLE_PROMO_RE =
+  /【[^】]*】|\[[^\]]*\]|（送料無料）|\(送料無料\)|送料無料|大人気|新作|限定|セール|SALE|sale|％?\s*OFF|%OFF|★+|☆+|＊+|\*{2,}|！+|!{2,}/gi;
+
+/** Trailing size tokens (JP / EN apparel). */
+const TITLE_SIZE_TOKEN_RE =
+  /^(?:フリーサイズ|FREE(?:\s*SIZE)?|ONESIZE|ONE\s*SIZE|XXL|2XL|3XL|4XL|XS|S|M|L|XL|F|[0-9]{1,3}(?:\s*[-〜～~]\s*[0-9]{1,3})?(?:\s*(?:cm|CM))?)$/i;
+
+/** Common trailing color words in JP apparel titles (best-effort defaults). */
+const TITLE_COLOR_TOKEN_RE =
+  /^(?:カラー|色|ブラック|ホワイト|グレー|グレイ|ネイビー|ブルー|レッド|ピンク|ベージュ|ブラウン|グリーン|イエロー|オレンジ|パープル|カーキ|クリーム|アイボリー|シルバー|ゴールド|黒|白|灰|紺|青|赤|緑|黄|茶|黒色|白色|black|white|gray|grey|navy|blue|red|pink|beige|brown|green|yellow|orange|purple|khaki|ivory|silver|gold)$/i;
+
+const TITLE_YEAR_SEASON_RE =
+  /\b(?:20\d{2}|19\d{2})\s*(?:AW|SS|FW|春夏|秋冬)?\b|\b(?:AW|SS|FW)\s*(?:20\d{2}|19\d{2})?\b/gi;
+
+function stripTrailingSizeColorTokens(text: string): string {
+  const parts = text.split(/\s+/).filter(Boolean);
+  while (parts.length > 1) {
+    const last = parts[parts.length - 1] || "";
+    if (TITLE_SIZE_TOKEN_RE.test(last) || TITLE_COLOR_TOKEN_RE.test(last)) {
+      parts.pop();
+      continue;
+    }
+    // Partial size like "M〜" / "M~L" after promo cleanup
+    if (/^(?:XS|S|M|L|XL|XXL)[-〜～~]?$/i.test(last)) {
+      parts.pop();
+      continue;
+    }
+    break;
+  }
+  return parts.join(" ");
+}
+
+/**
+ * Build a short default Grounding/SAM2 prompt from a Shopify product title.
+ * Strips promo junk and trailing size/color noise; keeps a category-like phrase.
+ * Empty / whitespace-only titles yield "".
+ */
+export function normalizeProductTitlePrompt(
+  title: string | null | undefined,
+): string {
+  let text = String(title ?? "")
+    .replace(/\u3000/g, " ")
+    .trim();
+  if (!text) return "";
+
+  text = text
+    .replace(TITLE_PROMO_RE, " ")
+    .replace(TITLE_YEAR_SEASON_RE, " ")
+    .replace(/[|｜／/]+/g, " ")
+    .replace(/[-–—]+/g, " ")
+    .replace(/[【】\[\]（）()「」『』<>]/g, " ")
+    .replace(/[~〜～]+/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+
+  text = stripTrailingSizeColorTokens(text);
+
+  // Prefer the first short segment when the title is still a long catalogue line.
+  if (text.length > 40) {
+    const parts = text.split(/\s+/).filter(Boolean);
+    if (parts.length >= 2) {
+      text = parts.slice(0, Math.min(4, parts.length)).join(" ");
+    }
+  }
+
+  return text.trim();
+}
+
+/**
+ * Effective segmentation prompt for a product: saved operator edit, else normalized title.
+ */
+export function effectiveProductTitlePrompt(
+  title: string | null | undefined,
+  manualPrompt?: string | null,
+): string {
+  if (typeof manualPrompt === "string") {
+    return manualPrompt.trim();
+  }
+  return normalizeProductTitlePrompt(title);
+}
 
 /** Alt / filename / role hints that a photo shows a person wearing the garment. */
 export const MODEL_PHOTO_POSITIVE_RE =
