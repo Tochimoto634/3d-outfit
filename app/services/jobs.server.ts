@@ -9,6 +9,7 @@ import {
   buildCollectedSnapshot,
   PRODUCT_NODES_QUERY,
   productsMissingImages,
+  productsMissingSizeChart,
   type AdminProductNode,
   type ManualEditsPayload,
 } from "./product-collect.server";
@@ -236,17 +237,22 @@ async function upsertAssetStubs(opts: {
 }
 
 export class GenerationBlockedError extends Error {
-  readonly code: "IMAGES_REQUIRED" | "PROMPT_REQUIRED";
+  readonly code: "IMAGES_REQUIRED" | "PROMPT_REQUIRED" | "SIZE_CHART_REQUIRED";
   readonly productTitles: string[];
 
   constructor(
     productTitles: string[],
-    code: "IMAGES_REQUIRED" | "PROMPT_REQUIRED" = "IMAGES_REQUIRED",
+    code:
+      | "IMAGES_REQUIRED"
+      | "PROMPT_REQUIRED"
+      | "SIZE_CHART_REQUIRED" = "IMAGES_REQUIRED",
   ) {
     const message =
       code === "PROMPT_REQUIRED"
         ? `セグメンテーション用プロンプトが空の商品があるため作成を開始できません: ${productTitles.join(", ")}`
-        : `写真がない商品があるため作成を開始できません: ${productTitles.join(", ")}`;
+        : code === "SIZE_CHART_REQUIRED"
+          ? `サイズ表記（サイズ表）がない商品があるため作成を開始できません: ${productTitles.join(", ")}`
+          : `写真がない商品があるため作成を開始できません: ${productTitles.join(", ")}`;
     super(message);
     this.name = "GenerationBlockedError";
     this.code = code;
@@ -278,9 +284,9 @@ export function productsMissingTitlePrompt(
 
 /**
  * Confirm review and kick off RunPod (mock or live) for each product snapshot.
- * Generation uses photos only — size chart is ignored here by design.
- * Blocks when any product has zero images (required for TRELLIS photo input)
- * or an empty segmentation prompt (required for Grounding).
+ * Generation photo path still uses photos + seg prompt only for RunPod,
+ * but size chart is required before start so Blender sizing later has data.
+ * Blocks when any product has zero images, empty seg prompt, or no usable size chart.
  */
 /** Statuses that may kick off (or re-kick) generation from the review UI. */
 const STARTABLE_JOB_STATUSES = new Set([
@@ -314,6 +320,14 @@ export async function confirmAndStartGeneration(jobId: string) {
   const missingPromptTitles = productsMissingTitlePrompt(job.products);
   if (missingPromptTitles.length > 0) {
     throw new GenerationBlockedError(missingPromptTitles, "PROMPT_REQUIRED");
+  }
+
+  const missingSizeChartTitles = productsMissingSizeChart(job.products);
+  if (missingSizeChartTitles.length > 0) {
+    throw new GenerationBlockedError(
+      missingSizeChartTitles,
+      "SIZE_CHART_REQUIRED",
+    );
   }
 
   const updated = await prisma.generationJob.update({
@@ -359,6 +373,23 @@ export async function confirmAndStartGeneration(jobId: string) {
       throw new GenerationBlockedError(
         [product.title || product.shopifyProductId],
         "PROMPT_REQUIRED",
+      );
+    }
+
+    if (
+      productsMissingSizeChart([
+        {
+          sizeChartJson: product.sizeChartJson,
+          manualEditsJson: product.manualEditsJson,
+          missingFlagsJson: product.missingFlagsJson,
+          title: product.title,
+          shopifyProductId: product.shopifyProductId,
+        },
+      ]).length > 0
+    ) {
+      throw new GenerationBlockedError(
+        [product.title || product.shopifyProductId],
+        "SIZE_CHART_REQUIRED",
       );
     }
 
@@ -703,29 +734,23 @@ export function getJobStartBlockers(
     shopifyProductId: string;
     missingFlagsJson: string;
     imagesJson: string;
+    sizeChartJson?: string | null;
     manualEditsJson?: string | null;
   }>,
 ) {
   const missingImages = productsMissingImages(products);
   const missingPrompts = productsMissingTitlePrompt(products);
+  const missingSizeCharts = productsMissingSizeChart(products);
+  /** Reserved for non-blocking review notes (size chart is now a hard blocker). */
   const softWarnings: string[] = [];
-  for (const p of products) {
-    let flags: string[] = [];
-    try {
-      const parsed = JSON.parse(p.missingFlagsJson) as unknown;
-      flags = Array.isArray(parsed) ? (parsed as string[]) : [];
-    } catch {
-      flags = [];
-    }
-    const label = p.title || p.shopifyProductId;
-    if (flags.includes("size_chart")) {
-      softWarnings.push(`${label}: サイズ表未解析（後工程用・作成は可能）`);
-    }
-  }
   return {
-    blocked: missingImages.length > 0 || missingPrompts.length > 0,
+    blocked:
+      missingImages.length > 0 ||
+      missingPrompts.length > 0 ||
+      missingSizeCharts.length > 0,
     missingImages,
     missingPrompts,
+    missingSizeCharts,
     softWarnings,
   };
 }

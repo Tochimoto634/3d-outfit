@@ -516,3 +516,87 @@ export function productsMissingImages(
   }
   return blocked;
 }
+
+/**
+ * True when the snapshot (plus any saved manual size-chart override) has at
+ * least one size row — Blender sizing later in the pipeline needs this.
+ */
+export function productHasUsableSizeChart(opts: {
+  sizeChartJson?: string | null;
+  manualEditsJson?: string | null;
+  missingFlagsJson?: string | null;
+}): boolean {
+  let base: SizeChartParseResult = {
+    rows: [],
+    unit: null,
+    incomplete: true,
+    notes: [],
+    rawMatches: [],
+    source: "none",
+  };
+  try {
+    const parsed = JSON.parse(opts.sizeChartJson || "null") as unknown;
+    if (parsed && typeof parsed === "object") {
+      const obj = parsed as Partial<SizeChartParseResult>;
+      const rows = Array.isArray(obj.rows)
+        ? (obj.rows as SizeChartParseResult["rows"])
+        : [];
+      base = {
+        rows,
+        unit: obj.unit === "cm" || obj.unit === "inch" ? obj.unit : null,
+        incomplete:
+          typeof obj.incomplete === "boolean"
+            ? obj.incomplete
+            : rows.length === 0,
+        notes: Array.isArray(obj.notes) ? obj.notes.map(String) : [],
+        rawMatches: Array.isArray(obj.rawMatches) ? obj.rawMatches : [],
+        source:
+          obj.source === "html_table" ||
+          obj.source === "heuristic" ||
+          obj.source === "none"
+            ? obj.source
+            : "none",
+      };
+    }
+  } catch {
+    /* keep empty base */
+  }
+
+  let manual: ManualEditsPayload = {};
+  try {
+    manual = JSON.parse(opts.manualEditsJson || "{}") as ManualEditsPayload;
+  } catch {
+    manual = {};
+  }
+
+  const overrideRaw = manual.sizeChartJson || manual.sizeChartOverride || null;
+  let effective = base;
+  if (overrideRaw) {
+    const normalized = normalizeManualSizeChart(overrideRaw);
+    if (normalized && normalized.rows.length > 0) {
+      effective = normalized;
+    }
+  }
+
+  // Usable = at least one size row (matches computeMissingFlags row gate).
+  return effective.rows.length > 0;
+}
+
+/** Titles (or IDs) of products missing usable size notation / size chart. */
+export function productsMissingSizeChart(
+  products: Array<{
+    sizeChartJson?: string | null;
+    manualEditsJson?: string | null;
+    missingFlagsJson?: string | null;
+    title?: string | null;
+    shopifyProductId?: string;
+  }>,
+): string[] {
+  const blocked: string[] = [];
+  for (const p of products) {
+    if (!productHasUsableSizeChart(p)) {
+      blocked.push(p.title || p.shopifyProductId || "unknown");
+    }
+  }
+  return blocked;
+}

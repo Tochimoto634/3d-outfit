@@ -109,6 +109,8 @@ export const action = async ({ request, params }: ActionFunctionArgs) => {
             err.code === "IMAGES_REQUIRED" ? err.productTitles : undefined,
           missingPrompts:
             err.code === "PROMPT_REQUIRED" ? err.productTitles : undefined,
+          missingSizeCharts:
+            err.code === "SIZE_CHART_REQUIRED" ? err.productTitles : undefined,
         };
       }
       const message = err instanceof Error ? err.message : String(err);
@@ -192,6 +194,8 @@ export default function GenerationJobPage() {
     missingImageTitles: blockers.missingImages,
     promptBlocked: blockers.missingPrompts.length > 0,
     missingPromptTitles: blockers.missingPrompts,
+    sizeChartBlocked: blockers.missingSizeCharts.length > 0,
+    missingSizeChartTitles: blockers.missingSizeCharts,
   });
   const canSubmitStart = createStartIsSubmittable(createUi);
   const canPoll =
@@ -201,7 +205,7 @@ export default function GenerationJobPage() {
     );
   const startBlockedImages = createUi.kind === "blocked_images";
   const startBlockedPrompt = createUi.kind === "blocked_prompt";
-  const startBlocked = startBlockedImages || startBlockedPrompt;
+  const startBlockedSizeChart = createUi.kind === "blocked_size_chart";
   /** Soft warnings only matter before / at start — hide once already generating. */
   const showSoftWarnings =
     blockers.softWarnings.length > 0 &&
@@ -273,8 +277,8 @@ export default function GenerationJobPage() {
 
         <s-section heading="選択商品の収集結果">
           <s-paragraph>
-            画像は1枚だけ選び、サイズ表を表／入力欄で確認してから作成を開始してください。3D
-            生成はその選択写真のみを使用します（サイズ表は生成には使いません・後のサイズ展開用）。
+            画像は1枚だけ選び、サイズ表記（サイズ表）を確認してから作成を開始してください。3D
+            生成の写真入力はその選択画像のみですが、サイズ表は後工程（Blender）に必須のため、空のままでは作成開始できません。
           </s-paragraph>
         </s-section>
 
@@ -298,7 +302,9 @@ export default function GenerationJobPage() {
           const selectedImageValue =
             collectedImageKey(selectedImage) ||
             defaultSelectedImageId(images);
-          const criticalMissing = missing.includes("images");
+          const criticalMissing =
+            missing.includes("images") || missing.includes("size_chart");
+          const sizeChartMissing = sizeChart.rows.length === 0;
           const measurementKeys = collectMeasurementKeys(sizeChart.rows);
           const editorRows = editableSizeChartRows(sizeChart);
           const advancedJsonDefault =
@@ -478,18 +484,19 @@ export default function GenerationJobPage() {
                     ) : null}
 
                     <s-heading>
-                      サイズ表（編集可）
+                      サイズ表（編集可・作成に必須）
                       {sizeChart.source
                         ? ` ／ 解析: ${formatSourceLabel(sizeChart.source)}`
                         : ""}
                     </s-heading>
                     <s-paragraph>
-                      行＝サイズ、列＝寸法（肩幅・身幅・着丈など）。空欄は未入力です。保存すると不足フラグを再計算します。
+                      行＝サイズ、列＝寸法（肩幅・身幅・着丈など）。空欄は未入力です。保存すると不足フラグを再計算します。Blender
+                      後工程のため、1行以上のサイズ表記が必要です。
                     </s-paragraph>
 
-                    {sizeChart.rows.length === 0 ? (
-                      <s-banner tone="warning">
-                        サイズ表を自動解析できませんでした。下の表に手動入力できます（後工程用・3D生成には使いません）。
+                    {sizeChartMissing ? (
+                      <s-banner tone="critical">
+                        サイズ表記がありません。下の表にサイズと寸法を入力して「この商品の手動編集を保存」してください。空のままでは作成開始できません。
                       </s-banner>
                     ) : null}
 
@@ -764,8 +771,8 @@ export default function GenerationJobPage() {
               TRELLIS.2 ワークフロー JSON は{" "}
               <code>config/runpod-trellis-workflow.json</code>{" "}
               （または env）で編集できます。キー未設定時はモックのまま動作します。
-              セグメンテーション用プロンプトは作成に必須です。サイズ表の不足は警告のみで、作成開始はブロックしません。
-              使う写真とプロンプトを編集したら、各商品の「手動編集を保存」を押してから作成してください。
+              セグメンテーション用プロンプトとサイズ表記（サイズ表）は作成に必須です。
+              使う写真・プロンプト・サイズ表を編集したら、各商品の「手動編集を保存」を押してから作成してください。
             </s-paragraph>
 
             {startBlockedImages ? (
@@ -786,6 +793,17 @@ export default function GenerationJobPage() {
                   : blockers.missingPrompts
                 ).join(", ")}
                 。品目名を短く入力して保存してください。
+              </s-banner>
+            ) : null}
+
+            {startBlockedSizeChart ? (
+              <s-banner tone="critical">
+                サイズ表記（サイズ表）がない商品があるため作成できません:{" "}
+                {(createUi.kind === "blocked_size_chart"
+                  ? createUi.titles
+                  : blockers.missingSizeCharts
+                ).join(", ")}
+                。表にサイズと寸法を入力して保存してください。
               </s-banner>
             ) : null}
 
@@ -834,7 +852,9 @@ export default function GenerationJobPage() {
                             ? "写真不足のため作成開始できません"
                             : startBlockedPrompt
                               ? "セグメンテーション用プロンプト不足のため作成開始できません"
-                              : "作成開始できません",
+                              : startBlockedSizeChart
+                                ? "サイズ表記不足のため作成開始できません"
+                                : "作成開始できません",
                     }
                   : {})}
               >
@@ -844,22 +864,27 @@ export default function GenerationJobPage() {
                     ? "確認して作成開始（写真不足で無効）"
                     : createUi.kind === "blocked_prompt"
                       ? "確認して作成開始（プロンプト不足で無効）"
-                      : "buttonLabel" in createUi
-                        ? createUi.buttonLabel
-                        : "確認して作成開始"}
+                      : createUi.kind === "blocked_size_chart"
+                        ? "確認して作成開始（サイズ表記不足で無効）"
+                        : "buttonLabel" in createUi
+                          ? createUi.buttonLabel
+                          : "確認して作成開始"}
               </s-button>
             </Form>
             {!canSubmitStart &&
             (createUi.kind === "in_progress" ||
               createUi.kind === "completed" ||
               createUi.kind === "blocked_images" ||
-              createUi.kind === "blocked_prompt") ? (
+              createUi.kind === "blocked_prompt" ||
+              createUi.kind === "blocked_size_chart") ? (
               <s-paragraph>
                 {createUi.kind === "blocked_images"
                   ? "無効理由: 写真が1枚もない商品があるため。"
                   : createUi.kind === "blocked_prompt"
                     ? "無効理由: セグメンテーション用プロンプトが空の商品があるため。"
-                    : `無効理由: ${createUi.reason}`}
+                    : createUi.kind === "blocked_size_chart"
+                      ? "無効理由: サイズ表記（サイズ表）がない商品があるため。"
+                      : `無効理由: ${createUi.reason}`}
               </s-paragraph>
             ) : null}
             <Form method="post">

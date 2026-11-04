@@ -1,7 +1,7 @@
 /**
  * Review-page CTA state for「確認して作成開始」.
- * Soft warnings (size_chart) never disable the button —
- * only missing photos, empty segmentation prompts, or job already past review, do.
+ * Hard blockers: missing photos, empty segmentation prompts, missing size chart.
+ * Soft warnings (if any remain) never disable the button.
  */
 
 export type EngineRunLike = { status: string };
@@ -10,6 +10,7 @@ export type CreateStartUiState =
   | { kind: "startable" }
   | { kind: "blocked_images"; titles: string[] }
   | { kind: "blocked_prompt"; titles: string[] }
+  | { kind: "blocked_size_chart"; titles: string[] }
   | {
       kind: "in_progress";
       /** Human-readable reason shown next to disabled CTA */
@@ -49,7 +50,7 @@ function summarizeEngineRuns(runs: EngineRunLike[]): string {
 
 /**
  * Decide how the create CTA should look given job status + engine runs.
- * Soft warnings are intentionally ignored here (non-blocking).
+ * Priority when multiple hard blockers: images → prompt → size_chart.
  */
 export function resolveCreateStartUiState(input: {
   jobStatus: string;
@@ -59,6 +60,9 @@ export function resolveCreateStartUiState(input: {
   /** Empty Grounding/SAM2 prompt blocks create (same priority band as photos). */
   promptBlocked?: boolean;
   missingPromptTitles?: string[];
+  /** Missing usable size notation / size chart blocks create (Blender later). */
+  sizeChartBlocked?: boolean;
+  missingSizeChartTitles?: string[];
 }): CreateStartUiState {
   const {
     jobStatus,
@@ -67,15 +71,30 @@ export function resolveCreateStartUiState(input: {
     missingImageTitles = [],
     promptBlocked = false,
     missingPromptTitles = [],
+    sizeChartBlocked = false,
+    missingSizeChartTitles = [],
   } = input;
 
   const hasActiveRun = engineRuns.some((r) => ACTIVE_ENGINE.has(r.status));
   const runSummary = summarizeEngineRuns(engineRuns);
 
+  const hardBlock = (): CreateStartUiState | null => {
+    if (imagesBlocked) {
+      return { kind: "blocked_images", titles: missingImageTitles };
+    }
+    if (promptBlocked) {
+      return { kind: "blocked_prompt", titles: missingPromptTitles };
+    }
+    if (sizeChartBlocked) {
+      return { kind: "blocked_size_chart", titles: missingSizeChartTitles };
+    }
+    return null;
+  };
+
   if (jobStatus === "ready" || jobStatus === "sizing") {
     return {
       kind: "completed",
-      reason: `作成済み（ジョブ: ${jobStatus}／${runSummary}）。不足メタの警告は作成を止めません。`,
+      reason: `作成済み（ジョブ: ${jobStatus}／${runSummary}）。`,
       buttonLabel: "作成済み",
     };
   }
@@ -89,12 +108,8 @@ export function resolveCreateStartUiState(input: {
   }
 
   if (jobStatus === "failed") {
-    if (imagesBlocked) {
-      return { kind: "blocked_images", titles: missingImageTitles };
-    }
-    if (promptBlocked) {
-      return { kind: "blocked_prompt", titles: missingPromptTitles };
-    }
+    const blocked = hardBlock();
+    if (blocked) return blocked;
     return {
       kind: "failed_retryable",
       reason: `前回の作成は失敗しています（${runSummary}）。内容を直して再開始できます。`,
@@ -103,12 +118,8 @@ export function resolveCreateStartUiState(input: {
   }
 
   if (jobStatus === "cancelled") {
-    if (imagesBlocked) {
-      return { kind: "blocked_images", titles: missingImageTitles };
-    }
-    if (promptBlocked) {
-      return { kind: "blocked_prompt", titles: missingPromptTitles };
-    }
+    const blocked = hardBlock();
+    if (blocked) return blocked;
     return {
       kind: "cancelled",
       reason: "このジョブはキャンセル済みです。再開始できます。",
@@ -117,12 +128,8 @@ export function resolveCreateStartUiState(input: {
   }
 
   // review / collecting (and any unexpected early status)
-  if (imagesBlocked) {
-    return { kind: "blocked_images", titles: missingImageTitles };
-  }
-  if (promptBlocked) {
-    return { kind: "blocked_prompt", titles: missingPromptTitles };
-  }
+  const blocked = hardBlock();
+  if (blocked) return blocked;
 
   if (jobStatus === "review" || jobStatus === "collecting") {
     return { kind: "startable" };

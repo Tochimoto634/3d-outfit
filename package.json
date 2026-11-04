@@ -21,6 +21,7 @@
     "smoke:runpod": "tsx scripts/smoke-runpod.mjs",
     "dry-run:runpod": "tsx scripts/runpod-dry-run.mjs",
     "smoke:size-chart": "node scripts/smoke-size-chart.mjs",
+    "smoke:size-chart-gate": "tsx scripts/smoke-size-chart-gate.mjs",
     "smoke:selected-image": "node scripts/smoke-selected-image.mjs",
     "smoke:create-button": "tsx scripts/smoke-create-button-state.mjs",
     "smoke:seg-prompt": "tsx scripts/smoke-seg-prompt.mjs",

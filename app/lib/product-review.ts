@@ -43,7 +43,8 @@ export type MissingFlag =
 
 export const MISSING_FLAG_LABELS: Record<MissingFlag, string> = {
   images: "写真なし（3D生成に必須）",
-  size_chart: "サイズ表未解析（後工程のサイズ展開用・手動入力可）",
+  size_chart:
+    "サイズ表記なし（サイズ表が必要・表に入力して保存してください）",
   /** Legacy flag; Admin no longer gates or soft-warns on model body meta. */
   model_meta: "モデル身長・体型メタなし（任意・現行レビューでは未使用）",
   product_not_found: "商品が Admin API で見つかりませんでした",
