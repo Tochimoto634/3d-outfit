@@ -2,6 +2,7 @@ import prisma from "../db.server";
 import {
   effectiveProductTitlePrompt,
   readManualEditsBlob,
+  resolveSelectedImage,
 } from "../lib/product-review";
 import {
   applyManualEdits,
@@ -328,22 +329,28 @@ export async function confirmAndStartGeneration(jobId: string) {
   const runs = [];
   for (const product of job.products) {
     const images = JSON.parse(product.imagesJson) as Array<{
+      id?: string;
       url: string;
       altText?: string | null;
     }>;
-    const imageInputs: RunPodImageInput[] = images.map((img) => ({
-      url: img.url,
-      alt: img.altText || undefined,
-    }));
+    const manual = readManualEditsBlob(product.manualEditsJson || "{}");
+    const selected = resolveSelectedImage(images, manual.selectedImageId);
+    const imageInputs: RunPodImageInput[] = selected
+      ? [
+          {
+            url: selected.url,
+            alt: selected.altText || undefined,
+          },
+        ]
+      : [];
 
-    if (imageInputs.length === 0) {
+    if (!selected || imageInputs.length === 0) {
       throw new GenerationBlockedError(
         [product.title || product.shopifyProductId],
         "IMAGES_REQUIRED",
       );
     }
 
-    const manual = readManualEditsBlob(product.manualEditsJson || "{}");
     const productTitlePrompt = effectiveProductTitlePrompt(
       product.title,
       manual.productTitlePrompt,
@@ -355,6 +362,9 @@ export async function confirmAndStartGeneration(jobId: string) {
       );
     }
 
+    const selectedKey =
+      manual.selectedImageId || selected.id || selected.url || null;
+
     const engineRun = await prisma.engineRun.create({
       data: {
         jobId,
@@ -364,7 +374,8 @@ export async function confirmAndStartGeneration(jobId: string) {
         requestJson: JSON.stringify({
           productSnapshotId: product.id,
           shopifyProductId: product.shopifyProductId,
-          imageCount: imageInputs.length,
+          imageCount: 1,
+          selectedImageId: selectedKey,
           product_title: product.title || null,
           product_title_prompt: productTitlePrompt,
           // Size chart intentionally omitted from generation payload
@@ -382,6 +393,7 @@ export async function confirmAndStartGeneration(jobId: string) {
           shopifyProductId: product.shopifyProductId,
           product_title: product.title || null,
           product_title_prompt: productTitlePrompt,
+          selected_image_id: selectedKey,
           // Size chart intentionally omitted
         },
       });
@@ -592,16 +604,14 @@ export async function updateProductManualEdits(
   const merged: ManualEditsPayload = {
     ...prev,
     ...manualEdits,
-    // Preserve prior model meta when the body section was hidden on save.
-    modelMetaOverride:
-      manualEdits.modelMetaOverride === null ||
-      manualEdits.modelMetaOverride === undefined
-        ? prev.modelMetaOverride ?? null
-        : manualEdits.modelMetaOverride,
-    hasModelPhotoOverride:
-      typeof manualEdits.hasModelPhotoOverride === "boolean"
-        ? manualEdits.hasModelPhotoOverride
-        : (prev.hasModelPhotoOverride ?? null),
+    // Keep any legacy body-meta JSON; Admin no longer posts overrides.
+    modelMetaOverride: prev.modelMetaOverride ?? null,
+    hasModelPhotoOverride: prev.hasModelPhotoOverride ?? null,
+    selectedImageId:
+      typeof manualEdits.selectedImageId === "string" &&
+      manualEdits.selectedImageId.trim()
+        ? manualEdits.selectedImageId.trim()
+        : (prev.selectedImageId ?? null),
     productTitlePrompt:
       typeof manualEdits.productTitlePrompt === "string"
         ? manualEdits.productTitlePrompt.trim()
@@ -634,31 +644,6 @@ export async function updateProductManualEdits(
     metafieldsBlob = JSON.parse(existing.metafieldsJson || "{}") as typeof metafieldsBlob;
   } catch {
     metafieldsBlob = {};
-  }
-
-  if (merged.modelMetaOverride) {
-    const prevMeta = metafieldsBlob.modelMeta || {};
-    const nextSourceKeys = [
-      ...(prevMeta.sourceKeys || []),
-      "manual_override",
-    ].filter((v, i, arr) => arr.indexOf(v) === i);
-    metafieldsBlob = {
-      ...metafieldsBlob,
-      fields: Array.isArray(metafieldsBlob.fields) ? metafieldsBlob.fields : [],
-      modelMeta: {
-        heightCm:
-          merged.modelMetaOverride.heightCm ?? prevMeta.heightCm ?? null,
-        weightKg:
-          merged.modelMetaOverride.weightKg ?? prevMeta.weightKg ?? null,
-        bustCm: merged.modelMetaOverride.bustCm ?? prevMeta.bustCm ?? null,
-        waistCm: merged.modelMetaOverride.waistCm ?? prevMeta.waistCm ?? null,
-        hipCm: merged.modelMetaOverride.hipCm ?? prevMeta.hipCm ?? null,
-        sizeWorn:
-          merged.modelMetaOverride.sizeWorn ?? prevMeta.sizeWorn ?? null,
-        notes: prevMeta.notes || [],
-        sourceKeys: nextSourceKeys,
-      },
-    };
   }
 
   let baseChart;
@@ -735,11 +720,6 @@ export function getJobStartBlockers(
     const label = p.title || p.shopifyProductId;
     if (flags.includes("size_chart")) {
       softWarnings.push(`${label}: サイズ表未解析（後工程用・作成は可能）`);
-    }
-    if (flags.includes("model_meta")) {
-      softWarnings.push(
-        `${label}: モデル体型メタなし（着用モデル写真あり・任意／作成は可能）`,
-      );
     }
   }
   return {

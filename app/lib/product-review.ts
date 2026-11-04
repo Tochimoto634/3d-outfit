@@ -11,12 +11,7 @@ export type CollectedImage = {
   source: "media" | "images";
   width?: number | null;
   height?: number | null;
-  /**
-   * Optional tagged media role (merchant/app metadata).
-   * Known positives: model | on_model | worn | 着画
-   * Known negatives: flat | ghost | detail | swatch | packshot
-   * Full vision/CV detection is deferred; heuristics + override cover MVP.
-   */
+  /** Optional tagged media role from Shopify / collection metadata. */
   mediaRole?: string | null;
 };
 
@@ -49,10 +44,15 @@ export type MissingFlag =
 export const MISSING_FLAG_LABELS: Record<MissingFlag, string> = {
   images: "写真なし（3D生成に必須）",
   size_chart: "サイズ表未解析（後工程のサイズ展開用・手動入力可）",
-  model_meta: "モデル身長・体型メタなし（着用モデル写真あり時のみ・任意）",
+  /** Legacy flag; Admin no longer gates or soft-warns on model body meta. */
+  model_meta: "モデル身長・体型メタなし（任意・現行レビューでは未使用）",
   product_not_found: "商品が Admin API で見つかりませんでした",
   description: "商品説明が空です",
 };
+
+/** Helper copy under the Admin single-image gallery picker. */
+export const REVIEW_SELECTED_IMAGE_HELPER =
+  "3Dモデルを作成するのに使用するため全体が分かりやすいものを選択。";
 
 /** Max thumbnails rendered in the review gallery (avoids iframe hang). */
 export const REVIEW_GALLERY_PREVIEW_LIMIT = 24;
@@ -196,12 +196,15 @@ export function editableSizeChartRows(
 export type ManualEditsView = {
   reviewNotes?: string;
   sizeChartOverride?: string | null;
+  /** @deprecated Admin body-field path removed; retained for old JSON only. */
   modelMetaOverride?: Partial<ModelBodyMeta> | null;
-  /**
-   * Merchant override for「着用モデル写真あり」.
-   * `null` / omitted → use heuristic detection from alt / filename / mediaRole.
-   */
+  /** @deprecated Admin「着用モデル写真」override removed; retained for old JSON only. */
   hasModelPhotoOverride?: boolean | null;
+  /**
+   * Image id (or url fallback) chosen for TRELLIS / RunPod input.
+   * When omitted, create/start uses the first gallery image.
+   */
+  selectedImageId?: string | null;
   /**
    * Operator-confirmed Grounding/SAM2 text (セグメンテーション用プロンプト).
    * When omitted, Admin UI / submit fall back to normalizeProductTitlePrompt(title).
@@ -292,137 +295,6 @@ export function effectiveProductTitlePrompt(
   return normalizeProductTitlePrompt(title);
 }
 
-/** Alt / filename / role hints that a photo shows a person wearing the garment. */
-export const MODEL_PHOTO_POSITIVE_RE =
-  /(?:^|[^a-z0-9])(?:on[\s_-]?model|worn[\s_-]?by|model(?:shot|wear|ling)?|mannequin)(?:[^a-z0-9]|$)|着用(?:モデル|写真|画|人)?|着画|モデル(?:写真|着用|着画)?|人体/i;
-
-const MODEL_PHOTO_POSITIVE_ROLES = new Set([
-  "model",
-  "on_model",
-  "on-model",
-  "worn",
-  "wearing",
-  "着画",
-  "着用",
-  "モデル",
-]);
-
-const MODEL_PHOTO_NEGATIVE_ROLES = new Set([
-  "flat",
-  "flatlay",
-  "flat_lay",
-  "ghost",
-  "ghostman",
-  "detail",
-  "swatch",
-  "packshot",
-  "still",
-  "product",
-  "hanging",
-]);
-
-export type ModelPhotoDetection = {
-  /** Heuristic found at least one likely on-model image. */
-  detectedFromMedia: boolean;
-  matchedImageIds: string[];
-  matchedHints: string[];
-  /** Explicit merchant checkbox when set. */
-  override: boolean | null;
-  /** Final gate: override ?? detectedFromMedia */
-  hasModelPhoto: boolean;
-  source: "override_on" | "override_off" | "heuristic" | "none";
-};
-
-export function filenameFromImageUrl(url: string): string {
-  try {
-    const path = new URL(url).pathname;
-    return decodeURIComponent(path.split("/").pop() || "");
-  } catch {
-    const trimmed = String(url || "").split("?")[0] || "";
-    return decodeURIComponent(trimmed.split("/").pop() || trimmed);
-  }
-}
-
-/**
- * Pragmatic MVP: does this image look like a person wearing the garment?
- * Prefer tagged mediaRole, then altText + CDN filename heuristics.
- * Not a CV model — false negatives/positives are expected; merchants can override.
- */
-export function imageSuggestsModelPhoto(img: {
-  id?: string;
-  url?: string | null;
-  altText?: string | null;
-  mediaRole?: string | null;
-}): { match: boolean; hint: string | null } {
-  const roleRaw = String(img.mediaRole || "").trim();
-  const role = roleRaw.toLowerCase();
-  if (role && MODEL_PHOTO_POSITIVE_ROLES.has(role)) {
-    return { match: true, hint: `role:${roleRaw}` };
-  }
-  if (role && MODEL_PHOTO_NEGATIVE_ROLES.has(role)) {
-    return { match: false, hint: null };
-  }
-
-  const file = filenameFromImageUrl(img.url || "");
-  const blob = `${img.altText || ""} ${file}`;
-  if (MODEL_PHOTO_POSITIVE_RE.test(blob)) {
-    const m = blob.match(MODEL_PHOTO_POSITIVE_RE);
-    return { match: true, hint: `text:${(m?.[0] || "pattern").trim()}` };
-  }
-  return { match: false, hint: null };
-}
-
-/**
- * Resolve whether the review UI should show model height/weight/body fields.
- */
-export function detectModelPhotoPresence(
-  images: Array<{
-    id?: string;
-    url?: string | null;
-    altText?: string | null;
-    mediaRole?: string | null;
-  }>,
-  override?: boolean | null,
-): ModelPhotoDetection {
-  const matchedImageIds: string[] = [];
-  const matchedHints: string[] = [];
-  for (const img of images || []) {
-    const { match, hint } = imageSuggestsModelPhoto(img);
-    if (!match) continue;
-    matchedImageIds.push(String(img.id || img.url || matchedImageIds.length));
-    if (hint) matchedHints.push(hint);
-  }
-  const detectedFromMedia = matchedImageIds.length > 0;
-  if (override === true) {
-    return {
-      detectedFromMedia,
-      matchedImageIds,
-      matchedHints,
-      override: true,
-      hasModelPhoto: true,
-      source: "override_on",
-    };
-  }
-  if (override === false) {
-    return {
-      detectedFromMedia,
-      matchedImageIds,
-      matchedHints,
-      override: false,
-      hasModelPhoto: false,
-      source: "override_off",
-    };
-  }
-  return {
-    detectedFromMedia,
-    matchedImageIds,
-    matchedHints,
-    override: null,
-    hasModelPhoto: detectedFromMedia,
-    source: detectedFromMedia ? "heuristic" : "none",
-  };
-}
-
 export function readManualEditsBlob(raw: string): ManualEditsView {
   const parsed = safeJsonParse<unknown>(raw, {});
   if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
@@ -431,21 +303,50 @@ export function readManualEditsBlob(raw: string): ManualEditsView {
   return parsed as ManualEditsView;
 }
 
-/** Merge collected model meta with merchant override for display / form defaults. */
-export function effectiveModelMeta(
-  base: ModelBodyMeta | null,
-  override?: Partial<ModelBodyMeta> | null,
-): ModelBodyMeta {
-  return {
-    heightCm: override?.heightCm ?? base?.heightCm ?? null,
-    weightKg: override?.weightKg ?? base?.weightKg ?? null,
-    bustCm: override?.bustCm ?? base?.bustCm ?? null,
-    waistCm: override?.waistCm ?? base?.waistCm ?? null,
-    hipCm: override?.hipCm ?? base?.hipCm ?? null,
-    sizeWorn: override?.sizeWorn ?? base?.sizeWorn ?? null,
-    notes: base?.notes || [],
-    sourceKeys: base?.sourceKeys || [],
-  };
+/** Stable id used by the Admin gallery radio + RunPod selection. */
+export function collectedImageKey(
+  img: Pick<CollectedImage, "id" | "url"> | null | undefined,
+): string {
+  if (!img) return "";
+  const id = String(img.id || "").trim();
+  if (id) return id;
+  return String(img.url || "").trim();
+}
+
+/**
+ * Resolve the single image used for 3D create/start.
+ * Prefers a saved selectedImageId (id or url); otherwise the first gallery image.
+ */
+export function resolveSelectedImage<
+  T extends { id?: string; url?: string | null },
+>(images: T[], selectedImageId?: string | null): T | null {
+  const list = (images || []).filter(
+    (img) => img && typeof img.url === "string" && String(img.url).trim(),
+  );
+  if (list.length === 0) return null;
+  const wanted = String(selectedImageId || "").trim();
+  if (wanted) {
+    const found = list.find((img) => {
+      const id = String(img.id || "").trim();
+      const url = String(img.url || "").trim();
+      return id === wanted || url === wanted;
+    });
+    if (found) return found;
+  }
+  return list[0] || null;
+}
+
+/** Default radio value for the Admin gallery (first image). */
+export function defaultSelectedImageId(
+  images: Array<Pick<CollectedImage, "id" | "url">>,
+): string {
+  return collectedImageKey(images[0]);
+}
+
+/** Read `selectedImageId` from the review save form. */
+export function selectedImageIdFromForm(form: FormData): string | null {
+  const raw = String(form.get("selectedImageId") || "").trim();
+  return raw || null;
 }
 
 function parseOptionalNumber(raw: FormDataEntryValue | null): number | null {
@@ -505,37 +406,6 @@ export function sizeChartOverrideFromTableForm(form: FormData): string | null {
     null,
     2,
   );
-}
-
-/**
- * Merchant checkbox 「着用モデル写真あり」.
- * Returns null when the field was not posted (legacy forms).
- */
-export function hasModelPhotoOverrideFromForm(
-  form: FormData,
-): boolean | null {
-  if (!form.has("hasModelPhotoOverridePosted")) return null;
-  return String(form.get("hasModelPhotoOverride") || "") === "1";
-}
-
-/**
- * Read model-body labeled fields from the review form.
- * Returns null when the model-body section was hidden (do not wipe prior meta).
- */
-export function modelMetaOverrideFromForm(
-  form: FormData,
-): Partial<ModelBodyMeta> | null {
-  if (String(form.get("modelFieldsEnabled") || "") !== "1") {
-    return null;
-  }
-  return {
-    heightCm: parseOptionalNumber(form.get("model_heightCm")),
-    weightKg: parseOptionalNumber(form.get("model_weightKg")),
-    bustCm: parseOptionalNumber(form.get("model_bustCm")),
-    waistCm: parseOptionalNumber(form.get("model_waistCm")),
-    hipCm: parseOptionalNumber(form.get("model_hipCm")),
-    sizeWorn: String(form.get("model_sizeWorn") || "").trim() || null,
-  };
 }
 
 export function sizeChartToEditorJson(sizeChart: SizeChartView): string {

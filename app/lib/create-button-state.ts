@@ -1,6 +1,6 @@
 /**
  * Review-page CTA state for「確認して作成開始」.
- * Soft warnings (model_meta / size_chart) never disable the button —
+ * Soft warnings (size_chart) never disable the button —
  * only missing photos, empty segmentation prompts, or job already past review, do.
  */
 
