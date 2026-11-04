@@ -16,10 +16,12 @@ import {
   detectModelPhotoPresence,
   editableSizeChartRows,
   effectiveModelMeta,
+  effectiveProductTitlePrompt,
   hasModelPhotoOverrideFromForm,
   measurementLabelJa,
   missingFlagLabel,
   modelMetaOverrideFromForm,
+  normalizeProductTitlePrompt,
   readManualEditsBlob,
   readMetafieldsBlob,
   readSizeChartBlob,
@@ -67,6 +69,7 @@ export const action = async ({ request, params }: ActionFunctionArgs) => {
   if (intent === "save_edits") {
     const snapshotId = String(form.get("snapshotId") || "");
     const notes = String(form.get("reviewNotes") || "");
+    const productTitlePrompt = String(form.get("productTitlePrompt") || "").trim();
     const useAdvancedJson = String(form.get("useSizeChartJson") || "") === "1";
     const advancedJson = String(form.get("sizeChartOverride") || "").trim();
     const fromTable = sizeChartOverrideFromTableForm(form);
@@ -78,6 +81,7 @@ export const action = async ({ request, params }: ActionFunctionArgs) => {
 
     await updateProductManualEdits(snapshotId, {
       reviewNotes: notes,
+      productTitlePrompt,
       sizeChartOverride,
       modelMetaOverride,
       hasModelPhotoOverride,
@@ -101,7 +105,11 @@ export const action = async ({ request, params }: ActionFunctionArgs) => {
           ok: false,
           intent: "confirm_start" as const,
           error: err.message,
-          missingImages: err.productTitles,
+          code: err.code,
+          missingImages:
+            err.code === "IMAGES_REQUIRED" ? err.productTitles : undefined,
+          missingPrompts:
+            err.code === "PROMPT_REQUIRED" ? err.productTitles : undefined,
         };
       }
       const message = err instanceof Error ? err.message : String(err);
@@ -354,8 +362,10 @@ export default function GenerationJobPage() {
   const createUi = resolveCreateStartUiState({
     jobStatus: job.status,
     engineRuns: job.engineRuns,
-    imagesBlocked: blockers.blocked,
+    imagesBlocked: blockers.missingImages.length > 0,
     missingImageTitles: blockers.missingImages,
+    promptBlocked: blockers.missingPrompts.length > 0,
+    missingPromptTitles: blockers.missingPrompts,
   });
   const canSubmitStart = createStartIsSubmittable(createUi);
   const canPoll =
@@ -363,7 +373,9 @@ export default function GenerationJobPage() {
     job.engineRuns.some((r) =>
       ["queued", "submitted", "running", "succeeded"].includes(r.status),
     );
-  const startBlocked = createUi.kind === "blocked_images";
+  const startBlockedImages = createUi.kind === "blocked_images";
+  const startBlockedPrompt = createUi.kind === "blocked_prompt";
+  const startBlocked = startBlockedImages || startBlockedPrompt;
   /** Soft warnings only matter before / at start — hide once already generating. */
   const showSoftWarnings =
     blockers.softWarnings.length > 0 &&
@@ -569,6 +581,33 @@ export default function GenerationJobPage() {
                   />
 
                   <s-stack direction="block" gap="base">
+                    <s-heading>セグメンテーション用プロンプト</s-heading>
+                    <s-paragraph>
+                      GroundingDINO→SAM2
+                      に渡す短い品目名です。Shopify商品名から自動正規化した初期値を、作成前に確認・編集してください。
+                    </s-paragraph>
+                    <s-text-field
+                      name="productTitlePrompt"
+                      label="セグメンテーション用プロンプト"
+                      details="セット写真は抜きたい品目だけ短く書く（例: デニムジャケット / denim jacket）。空欄では作成開始できません。"
+                      defaultValue={effectiveProductTitlePrompt(
+                        product.title,
+                        manual.productTitlePrompt,
+                      )}
+                      placeholder={
+                        normalizeProductTitlePrompt(product.title) ||
+                        "例: デニムジャケット"
+                      }
+                    ></s-text-field>
+                    {!effectiveProductTitlePrompt(
+                      product.title,
+                      manual.productTitlePrompt,
+                    ) ? (
+                      <s-banner tone="critical">
+                        プロンプトが空です。品目名を入力して「この商品の手動編集を保存」してください。
+                      </s-banner>
+                    ) : null}
+
                     <s-heading>
                       サイズ表（編集可）
                       {sizeChart.source
@@ -864,16 +903,28 @@ export default function GenerationJobPage() {
               TRELLIS.2 ワークフロー JSON は{" "}
               <code>config/runpod-trellis-workflow.json</code>{" "}
               （または env）で編集できます。キー未設定時はモックのまま動作します。
-              モデル体型メタやサイズ表の不足は警告のみで、作成開始はブロックしません。
+              セグメンテーション用プロンプトは作成に必須です。モデル体型メタやサイズ表の不足は警告のみで、作成開始はブロックしません。
+              プロンプトを編集したら、各商品の「手動編集を保存」を押してから作成してください。
             </s-paragraph>
 
-            {startBlocked ? (
+            {startBlockedImages ? (
               <s-banner tone="critical">
                 写真がない商品があるため「確認して作成開始」を実行できません:{" "}
                 {(createUi.kind === "blocked_images"
                   ? createUi.titles
                   : blockers.missingImages
                 ).join(", ")}
+              </s-banner>
+            ) : null}
+
+            {startBlockedPrompt ? (
+              <s-banner tone="critical">
+                セグメンテーション用プロンプトが空の商品があるため作成できません:{" "}
+                {(createUi.kind === "blocked_prompt"
+                  ? createUi.titles
+                  : blockers.missingPrompts
+                ).join(", ")}
+                。品目名を短く入力して保存してください。
               </s-banner>
             ) : null}
 
@@ -918,9 +969,11 @@ export default function GenerationJobPage() {
                         createUi.kind === "in_progress" ||
                         createUi.kind === "completed"
                           ? createUi.reason
-                          : startBlocked
+                          : startBlockedImages
                             ? "写真不足のため作成開始できません"
-                            : "作成開始できません",
+                            : startBlockedPrompt
+                              ? "セグメンテーション用プロンプト不足のため作成開始できません"
+                              : "作成開始できません",
                     }
                   : {})}
               >
@@ -928,19 +981,24 @@ export default function GenerationJobPage() {
                   ? "確認して作成開始"
                   : createUi.kind === "blocked_images"
                     ? "確認して作成開始（写真不足で無効）"
-                    : "buttonLabel" in createUi
-                      ? createUi.buttonLabel
-                      : "確認して作成開始"}
+                    : createUi.kind === "blocked_prompt"
+                      ? "確認して作成開始（プロンプト不足で無効）"
+                      : "buttonLabel" in createUi
+                        ? createUi.buttonLabel
+                        : "確認して作成開始"}
               </s-button>
             </Form>
             {!canSubmitStart &&
             (createUi.kind === "in_progress" ||
               createUi.kind === "completed" ||
-              createUi.kind === "blocked_images") ? (
+              createUi.kind === "blocked_images" ||
+              createUi.kind === "blocked_prompt") ? (
               <s-paragraph>
                 {createUi.kind === "blocked_images"
                   ? "無効理由: 写真が1枚もない商品があるため。"
-                  : `無効理由: ${createUi.reason}`}
+                  : createUi.kind === "blocked_prompt"
+                    ? "無効理由: セグメンテーション用プロンプトが空の商品があるため。"
+                    : `無効理由: ${createUi.reason}`}
               </s-paragraph>
             ) : null}
             <Form method="post">

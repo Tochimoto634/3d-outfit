@@ -1,7 +1,7 @@
 /**
  * Review-page CTA state for「確認して作成開始」.
  * Soft warnings (model_meta / size_chart) never disable the button —
- * only missing photos, or job already past review, do.
+ * only missing photos, empty segmentation prompts, or job already past review, do.
  */
 
 export type EngineRunLike = { status: string };
@@ -9,6 +9,7 @@ export type EngineRunLike = { status: string };
 export type CreateStartUiState =
   | { kind: "startable" }
   | { kind: "blocked_images"; titles: string[] }
+  | { kind: "blocked_prompt"; titles: string[] }
   | {
       kind: "in_progress";
       /** Human-readable reason shown next to disabled CTA */
@@ -55,12 +56,17 @@ export function resolveCreateStartUiState(input: {
   engineRuns: EngineRunLike[];
   imagesBlocked: boolean;
   missingImageTitles?: string[];
+  /** Empty Grounding/SAM2 prompt blocks create (same priority band as photos). */
+  promptBlocked?: boolean;
+  missingPromptTitles?: string[];
 }): CreateStartUiState {
   const {
     jobStatus,
     engineRuns,
     imagesBlocked,
     missingImageTitles = [],
+    promptBlocked = false,
+    missingPromptTitles = [],
   } = input;
 
   const hasActiveRun = engineRuns.some((r) => ACTIVE_ENGINE.has(r.status));
@@ -86,6 +92,9 @@ export function resolveCreateStartUiState(input: {
     if (imagesBlocked) {
       return { kind: "blocked_images", titles: missingImageTitles };
     }
+    if (promptBlocked) {
+      return { kind: "blocked_prompt", titles: missingPromptTitles };
+    }
     return {
       kind: "failed_retryable",
       reason: `前回の作成は失敗しています（${runSummary}）。内容を直して再開始できます。`,
@@ -97,6 +106,9 @@ export function resolveCreateStartUiState(input: {
     if (imagesBlocked) {
       return { kind: "blocked_images", titles: missingImageTitles };
     }
+    if (promptBlocked) {
+      return { kind: "blocked_prompt", titles: missingPromptTitles };
+    }
     return {
       kind: "cancelled",
       reason: "このジョブはキャンセル済みです。再開始できます。",
@@ -107,6 +119,9 @@ export function resolveCreateStartUiState(input: {
   // review / collecting (and any unexpected early status)
   if (imagesBlocked) {
     return { kind: "blocked_images", titles: missingImageTitles };
+  }
+  if (promptBlocked) {
+    return { kind: "blocked_prompt", titles: missingPromptTitles };
   }
 
   if (jobStatus === "review" || jobStatus === "collecting") {

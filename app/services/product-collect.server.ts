@@ -453,6 +453,8 @@ export type ManualEditsPayload = {
   modelMetaOverride?: Partial<ModelBodyMeta> | null;
   /** Merchant「着用モデル写真あり」override; null = heuristic only. */
   hasModelPhotoOverride?: boolean | null;
+  /** Operator-confirmed Grounding/SAM2 prompt (セグメンテーション用). */
+  productTitlePrompt?: string | null;
   updatedAt?: string;
 };
 

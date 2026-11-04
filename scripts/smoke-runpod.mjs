@@ -78,13 +78,29 @@ async function main() {
   const payload = runpod.buildTrellisRunPayload({
     productSnapshotId: "smoke_snapshot",
     images: [{ url: "https://example.com/smoke.jpg", alt: "smoke" }],
+    meta: {
+      product_title: "【送料無料】デニムジャケット",
+      product_title_prompt: "デニムジャケット",
+      shopifyProductId: "gid://shopify/Product/1",
+    },
   });
   if ("size_chart" in payload.input || "sizeChart" in payload.input) {
     console.error("[smoke-runpod] FAIL: size chart leaked into payload");
     process.exit(1);
   }
+  if (payload.input.meta?.product_title_prompt !== "デニムジャケット") {
+    console.error(
+      "[smoke-runpod] FAIL: product_title_prompt missing from meta",
+      payload.input.meta,
+    );
+    process.exit(1);
+  }
   console.log("[smoke-runpod] payload.photo_only", payload.input.photo_only);
   console.log("[smoke-runpod] payload.image_count", payload.input.images.length);
+  console.log(
+    "[smoke-runpod] payload.meta.product_title_prompt",
+    payload.input.meta.product_title_prompt,
+  );
 
   const submit = await runpod.submitTrellisRun({
     productSnapshotId: "smoke_snapshot",
