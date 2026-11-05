@@ -5,10 +5,10 @@ import type {
 } from "react-router";
 import {
   Form,
-  redirect,
   useActionData,
   useLoaderData,
   useNavigation,
+  useRouteError,
 } from "react-router";
 import { boundary } from "@shopify/shopify-app-react-router/server";
 import { authenticate } from "../shopify.server";
@@ -29,7 +29,12 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
 };
 
 export const action = async ({ request }: ActionFunctionArgs) => {
-  const { admin, session } = await authenticate.admin(request);
+  // Use Shopify's redirect (not react-router's): embedded Admin form POSTs are
+  // data requests, and authenticate.admin's helper preserves shop/host/embedded
+  // params and navigates via App Bridge. Plain RR redirect leaves a blank iframe
+  // after「3D作成」until a full reload (especially after deploys/merges when SPA
+  // chunks are stale).
+  const { admin, session, redirect } = await authenticate.admin(request);
   const form = await request.formData();
   const idsRaw = String(form.get("productIds") || "");
   const productIds = idsRaw
@@ -37,13 +42,13 @@ export const action = async ({ request }: ActionFunctionArgs) => {
     .map((s) => s.trim())
     .filter(Boolean);
 
+  let job;
   try {
-    const job = await createGenerationJob({
+    job = await createGenerationJob({
       shopDomain: session.shop,
       productIds,
       admin,
     });
-    return redirect(`/app/jobs/${job.id}`);
   } catch (err) {
     const message =
       err instanceof Error ? err.message : "ジョブ作成に失敗しました";
@@ -53,6 +58,9 @@ export const action = async ({ request }: ActionFunctionArgs) => {
       productIds,
     };
   }
+
+  // Outside try/catch: Shopify redirect may throw a Response for App Bridge.
+  return redirect(`/app/jobs/${job.id}`);
 };
 
 export default function NewGenerationJob() {
@@ -127,6 +135,10 @@ export default function NewGenerationJob() {
       </s-section>
     </s-page>
   );
+}
+
+export function ErrorBoundary() {
+  return boundary.error(useRouteError());
 }
 
 export const headers: HeadersFunction = (headersArgs) => {
