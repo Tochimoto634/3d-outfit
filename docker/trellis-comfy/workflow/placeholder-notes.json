@@ -5,5 +5,19 @@
     "input_keys": ["workflow", "images", "photo_only", "product_snapshot_id", "meta"],
     "output_must_include": "https URL to .glb (glb_url or files[].url) — never data: blob"
   },
-  "do_not_include": ["size_chart", "sizeChart", "measurements"]
+  "do_not_include": ["size_chart", "sizeChart", "measurements"],
+  "export_steps_todo": [
+    "On a GPU Pod with TRELLIS nodes + weights, run photo → GLB once in ComfyUI",
+    "Export Save (API Format) / Export (API) — not the UI workflow JSON",
+    "Copy into app config/runpod-trellis-workflow.json OR set RUNPOD_WORKFLOW_PATH / RUNPOD_WORKFLOW_JSON",
+    "Align LoadImage filename with app image injection (e.g. INPUT_IMAGE_0)",
+    "Remove placeholder from node _meta.title so dry-run placeholderNodes becomes false",
+    "Ensure Endpoint BUCKET_* + handler GLB upload (see scripts/handler_glb_notes.py)"
+  ],
+  "weights_todo": {
+    "prefer": "RunPod Network Volume (same region as Endpoint)",
+    "comfy_org_layout": "https://huggingface.co/Comfy-Org/TRELLIS.2 → models/{clip_vision,diffusion_models,vae}",
+    "microsoft_raw": "https://huggingface.co/microsoft/TRELLIS.2-4B → often models/trellis2 (node-dependent)",
+    "bake_flag": "DOWNLOAD_MODELS=1 is optional and discouraged for production images"
+  }
 }

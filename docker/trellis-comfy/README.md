@@ -49,7 +49,9 @@ docker push YOUR_DOCKERHUB_USER/3d-outfit-trellis-comfy:0.1.0-draft
 ### 2. モデル重みはイメージに焼かない
 
 - `microsoft/TRELLIS.2-4B` はマルチ GB。Network Volume（`/runpod-volume/models/...`）推奨。
-- `scripts/download-models.sh` は任意 bake 用。ノードが期待するディレクトリ配置はパッケージごとに違う → 要確認。
+- ComfyUI 公式寄りは [Comfy-Org/TRELLIS.2](https://huggingface.co/Comfy-Org/TRELLIS.2)（`clip_vision` / `diffusion_models` / `vae`）。
+- `scripts/download-models.sh` は任意 bake 用。`TRELLIS_WEIGHTS_SOURCE=comfy-org|microsoft`。ノードが期待するディレクトリ配置はパッケージごとに違う → 要確認。
+- 本番 workflow の載せ方（API export → `config/runpod-trellis-workflow.json` / `RUNPOD_WORKFLOW_PATH`）と live-ping 手順は Project ドキュメント **`runpod-trellis-weights-workflow.md`** を参照。
 
 ### 3. 株価 worker は GLB を https で返さないことがある
 

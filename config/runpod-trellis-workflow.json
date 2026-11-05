@@ -1,5 +1,5 @@
 {
-  "_comment": "Editable default ComfyUI/TRELLIS.2 workflow placeholder for a NEW 3D OUTFIT Serverless endpoint (do not point RUNPOD_ENDPOINT_ID at unrelated project endpoints). Replace node class_types with your installed TRELLIS.2 custom nodes. Size chart must never be added here.",
+  "_comment": "PLACEHOLDER — replace with a real ComfyUI API-format export that matches the worker. See config/runpod-trellis-workflow.example.json _export_howto and Project doc runpod-trellis-weights-workflow.md. Do not point RUNPOD_ENDPOINT_ID at unrelated project endpoints. Size chart must never be added here.",
   "3": {
     "inputs": {
       "image": "INPUT_IMAGE_0",
