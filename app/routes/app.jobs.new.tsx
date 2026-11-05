@@ -1,3 +1,4 @@
+import { useEffect } from "react";
 import type {
   ActionFunctionArgs,
   HeadersFunction,
@@ -5,6 +6,7 @@ import type {
 } from "react-router";
 import {
   Form,
+  isRouteErrorResponse,
   useActionData,
   useLoaderData,
   useNavigation,
@@ -29,12 +31,7 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
 };
 
 export const action = async ({ request }: ActionFunctionArgs) => {
-  // Use Shopify's redirect (not react-router's): embedded Admin form POSTs are
-  // data requests, and authenticate.admin's helper preserves shop/host/embedded
-  // params and navigates via App Bridge. Plain RR redirect leaves a blank iframe
-  // after「3D作成」until a full reload (especially after deploys/merges when SPA
-  // chunks are stale).
-  const { admin, session, redirect } = await authenticate.admin(request);
+  const { admin, session } = await authenticate.admin(request);
   const form = await request.formData();
   const idsRaw = String(form.get("productIds") || "");
   const productIds = idsRaw
@@ -42,13 +39,19 @@ export const action = async ({ request }: ActionFunctionArgs) => {
     .map((s) => s.trim())
     .filter(Boolean);
 
-  let job;
   try {
-    job = await createGenerationJob({
+    const job = await createGenerationJob({
       shopDomain: session.shop,
       productIds,
       admin,
     });
+    // Do NOT use authenticate.admin().redirect() or react-router redirect here.
+    // On embedded form POSTs (data requests), Shopify's redirect throws 401 +
+    // X-Shopify-API-Request-Failure-Reauthorize-Url; App Bridge then sends
+    // Navigation.redirect.remote and returns a never-resolving Promise → blank
+    // iframe until the merchant hard-reloads. Return the id and navigate in the
+    // client with a same-origin document load instead (matches "reload works").
+    return { ok: true as const, jobId: job.id, productIds };
   } catch (err) {
     const message =
       err instanceof Error ? err.message : "ジョブ作成に失敗しました";
@@ -58,19 +61,39 @@ export const action = async ({ request }: ActionFunctionArgs) => {
       productIds,
     };
   }
-
-  // Outside try/catch: Shopify redirect may throw a Response for App Bridge.
-  return redirect(`/app/jobs/${job.id}`);
 };
+
+/** Keep embedded Admin auth query params across the post-create document load. */
+function jobReviewHref(jobId: string): string {
+  const next = new URL(`/app/jobs/${jobId}`, window.location.origin);
+  const cur = new URLSearchParams(window.location.search);
+  for (const key of ["shop", "host", "embedded", "id_token"]) {
+    const value = cur.get(key);
+    if (value && !next.searchParams.has(key)) {
+      next.searchParams.set(key, value);
+    }
+  }
+  return `${next.pathname}${next.search}`;
+}
 
 export default function NewGenerationJob() {
   const { productIds, rawQuery } = useLoaderData<typeof loader>();
   const actionData = useActionData<typeof action>();
   const navigation = useNavigation();
   const busy = navigation.state !== "idle";
-  const ids = actionData && "productIds" in actionData
-    ? actionData.productIds
-    : productIds;
+  const ids =
+    actionData && "productIds" in actionData
+      ? actionData.productIds
+      : productIds;
+
+  useEffect(() => {
+    if (!actionData || !("jobId" in actionData) || !actionData.ok) return;
+    // Full document navigation — same path that already works after reload.
+    window.location.assign(jobReviewHref(actionData.jobId));
+  }, [actionData]);
+
+  const redirecting =
+    Boolean(actionData && "jobId" in actionData && actionData.ok) || busy;
 
   return (
     <s-page heading="3D作成 — ジョブ開始">
@@ -79,9 +102,11 @@ export default function NewGenerationJob() {
           <s-banner tone="critical">{actionData.error}</s-banner>
         ) : null}
 
-        {busy ? (
+        {redirecting ? (
           <s-banner tone="info">
-            商品データを収集しています…（画像・メタフィールド・サイズ表）。完了までこのままお待ちください。
+            {actionData && "jobId" in actionData && actionData.ok
+              ? "確認画面へ移動しています…"
+              : "商品データを収集しています…（画像・メタフィールド・サイズ表）。完了までこのままお待ちください。"}
           </s-banner>
         ) : null}
 
@@ -116,9 +141,11 @@ export default function NewGenerationJob() {
             </s-box>
             <Form method="post">
               <input type="hidden" name="productIds" value={ids.join(",")} />
-              <s-button type="submit" variant="primary" disabled={busy}>
-                {busy
-                  ? "収集中…"
+              <s-button type="submit" variant="primary" disabled={redirecting}>
+                {redirecting
+                  ? actionData && "jobId" in actionData && actionData.ok
+                    ? "移動中…"
+                    : "収集中…"
                   : "データを収集して確認画面へ"}
               </s-button>
             </Form>
@@ -138,7 +165,19 @@ export default function NewGenerationJob() {
 }
 
 export function ErrorBoundary() {
-  return boundary.error(useRouteError());
+  const error = useRouteError();
+  if (isRouteErrorResponse(error)) {
+    return boundary.error(error);
+  }
+  const message = error instanceof Error ? error.message : String(error);
+  return (
+    <s-page heading="3D作成 — エラー">
+      <s-banner tone="critical">
+        ジョブ開始画面の表示に失敗しました。再読み込みするか、商品一覧から「3D作成」をやり直してください。
+        {message ? ` (${message})` : ""}
+      </s-banner>
+    </s-page>
+  );
 }
 
 export const headers: HeadersFunction = (headersArgs) => {

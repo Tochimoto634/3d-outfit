@@ -6,6 +6,7 @@ import type {
 } from "react-router";
 import {
   Form,
+  isRouteErrorResponse,
   useActionData,
   useLoaderData,
   useNavigation,
@@ -60,11 +61,19 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
 
   const blockers = getJobStartBlockers(job.products);
 
-  return {
-    job,
-    blockers,
-    runpodMock: isRunPodMockMode(),
-    runpod: getRunPodPublicConfig(),
+  // Plain JSON only — avoids Date/special-value surprises on client navigations.
+  return JSON.parse(
+    JSON.stringify({
+      job,
+      blockers,
+      runpodMock: isRunPodMockMode(),
+      runpod: getRunPodPublicConfig(),
+    }),
+  ) as {
+    job: NonNullable<Awaited<ReturnType<typeof getGenerationJob>>>;
+    blockers: ReturnType<typeof getJobStartBlockers>;
+    runpodMock: boolean;
+    runpod: ReturnType<typeof getRunPodPublicConfig>;
   };
 };
 
@@ -944,7 +953,19 @@ export default function GenerationJobPage() {
 }
 
 export function ErrorBoundary() {
-  return boundary.error(useRouteError());
+  const error = useRouteError();
+  if (isRouteErrorResponse(error)) {
+    return boundary.error(error);
+  }
+  const message = error instanceof Error ? error.message : String(error);
+  return (
+    <s-page heading="ジョブ表示エラー">
+      <s-banner tone="critical">
+        確認画面の表示に失敗しました。ページを再読み込みするか、ジョブ一覧から開き直してください。
+        {message ? ` (${message})` : ""}
+      </s-banner>
+    </s-page>
+  );
 }
 
 export const headers: HeadersFunction = (headersArgs) => {
