@@ -48,8 +48,20 @@ export const MISSING_FLAG_LABELS: Record<MissingFlag, string> = {
   /** Legacy flag; Admin no longer gates or soft-warns on model body meta. */
   model_meta: "モデル身長・体型メタなし（任意・現行レビューでは未使用）",
   product_not_found: "商品が Admin API で見つかりませんでした",
+  /** Legacy flag; empty description is a soft size-table memo only (not a blocker). */
   description: "商品説明が空です",
 };
+
+/** Flags that must not appear in 不足フラグ or block create. */
+export const NON_BLOCKING_MISSING_FLAGS = new Set<string>([
+  "description",
+  "model_meta",
+]);
+
+/** Missing flags shown in the Admin 不足フラグ banner. */
+export function visibleMissingFlags(flags: string[]): string[] {
+  return flags.filter((flag) => !NON_BLOCKING_MISSING_FLAGS.has(flag));
+}
 
 /** Helper copy under the Admin single-image gallery picker. */
 export const REVIEW_SELECTED_IMAGE_HELPER =

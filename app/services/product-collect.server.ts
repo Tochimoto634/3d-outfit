@@ -364,8 +364,9 @@ export type EffectiveProductReview = {
 };
 
 /**
- * Compute missing flags for a product snapshot (photos required for 3D).
- * Admin no longer flags model body meta from on-model photo detection.
+ * Compute missing flags for a product snapshot (photos + size chart for 3D).
+ * Admin no longer flags model body meta or empty product description
+ * (description-empty is a soft memo under the size table only).
  */
 export function computeMissingFlags(opts: {
   productFound: boolean;
@@ -380,7 +381,7 @@ export function computeMissingFlags(opts: {
     return missing;
   }
   if (opts.images.length === 0) missing.push("images");
-  if (!opts.descriptionHtml?.trim()) missing.push("description");
+  // Empty descriptionHtml is intentionally not a missing flag / create blocker.
   if (opts.sizeChart.incomplete || opts.sizeChart.rows.length === 0) {
     missing.push("size_chart");
   }
