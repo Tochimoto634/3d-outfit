@@ -37,6 +37,7 @@ import {
   selectedImageIdFromForm,
   sizeChartOverrideFromTableForm,
   sizeChartToEditorJson,
+  visibleMissingFlags,
   type CollectedImage,
 } from "../lib/product-review";
 import {
@@ -297,6 +298,25 @@ export default function GenerationJobPage() {
           </s-paragraph>
         </s-section>
 
+        <style>{`
+          .review-img-pick {
+            padding: 6px;
+            border: 2px solid transparent;
+            border-radius: 8px;
+            background: #f6f6f7;
+          }
+          .review-img-pick:has(input:checked) {
+            border-color: #2c6ecb;
+          }
+          .review-img-pick input[type="radio"] {
+            position: absolute;
+            opacity: 0;
+            width: 1px;
+            height: 1px;
+            pointer-events: none;
+          }
+        `}</style>
+
         {job.products.map((product) => {
           const images = safeJsonArray<CollectedImage>(product.imagesJson).filter(
             (img) => img && typeof img.url === "string" && img.url.trim(),
@@ -310,7 +330,9 @@ export default function GenerationJobPage() {
             product.metafieldsJson,
           );
           const sizeChart = readSizeChartBlob(product.sizeChartJson);
-          const missing = safeJsonArray<string>(product.missingFlagsJson);
+          const missing = visibleMissingFlags(
+            safeJsonArray<string>(product.missingFlagsJson),
+          );
           const manual = readManualEditsBlob(product.manualEditsJson);
           const selectedImage =
             resolveSelectedImage(images, manual.selectedImageId) || images[0];
@@ -320,6 +342,9 @@ export default function GenerationJobPage() {
           const criticalMissing =
             missing.includes("images") || missing.includes("size_chart");
           const sizeChartMissing = sizeChart.rows.length === 0;
+          const descriptionEmpty = !String(
+            product.descriptionHtml || "",
+          ).trim();
           const measurementKeys = collectMeasurementKeys(sizeChart.rows);
           const editorRows = editableSizeChartRows(sizeChart);
           const advancedJsonDefault =
@@ -389,13 +414,13 @@ export default function GenerationJobPage() {
                           {previewImages.map((img, idx) => {
                             const value = collectedImageKey(img);
                             const inputId = `selected-image-${product.id}-${idx}`;
+                            const metaLabel = `#${img.position || idx + 1}${
+                              img.source ? ` · ${img.source}` : ""
+                            }`;
                             return (
-                              <s-box
+                              <div
                                 key={value || idx}
-                                padding="small"
-                                borderWidth="base"
-                                borderRadius="base"
-                                background="subdued"
+                                className="review-img-pick"
                               >
                                 <label
                                   htmlFor={inputId}
@@ -405,59 +430,50 @@ export default function GenerationJobPage() {
                                     fontSize: "13px",
                                   }}
                                 >
-                                  <span
-                                    style={{
-                                      display: "inline-flex",
-                                      alignItems: "center",
-                                      gap: "0.35rem",
-                                      marginBottom: 6,
-                                    }}
-                                  >
-                                    <input
-                                      id={inputId}
-                                      type="radio"
-                                      name="selectedImageId"
-                                      value={value}
-                                      defaultChecked={
-                                        value === selectedImageValue
-                                      }
-                                      required={idx === 0}
-                                    />
-                                    この画像を使う
-                                  </span>
+                                  <input
+                                    id={inputId}
+                                    type="radio"
+                                    name="selectedImageId"
+                                    value={value}
+                                    defaultChecked={
+                                      value === selectedImageValue
+                                    }
+                                    required={idx === 0}
+                                    aria-label={`${metaLabel} を選択`}
+                                  />
                                   {/* eslint-disable-next-line jsx-a11y/alt-text */}
                                   <img
                                     src={img.url}
-                                    alt={img.altText || product.title || "product"}
+                                    alt={
+                                      img.altText || product.title || "product"
+                                    }
                                     width={120}
                                     height={120}
                                     style={{
                                       objectFit: "cover",
                                       display: "block",
+                                      borderRadius: 4,
                                     }}
                                     loading="lazy"
                                     decoding="async"
                                   />
-                                  <span
-                                    style={{
-                                      display: "block",
-                                      marginTop: 4,
-                                      color: "#6d7175",
-                                    }}
-                                  >
-                                    #{img.position || idx + 1}
-                                    {img.source ? ` · ${img.source}` : ""}
-                                  </span>
                                 </label>
                                 <a
                                   href={img.url}
                                   target="_blank"
                                   rel="noreferrer"
-                                  style={{ fontSize: "12px" }}
+                                  title="原寸画像を開く"
+                                  style={{
+                                    display: "block",
+                                    marginTop: 4,
+                                    color: "#6d7175",
+                                    fontSize: "12px",
+                                    textDecoration: "none",
+                                  }}
                                 >
-                                  原寸を開く
+                                  {metaLabel}
                                 </a>
-                              </s-box>
+                              </div>
                             );
                           })}
                         </s-stack>
@@ -472,10 +488,6 @@ export default function GenerationJobPage() {
                     )}
 
                     <s-heading>セグメンテーション用プロンプト</s-heading>
-                    <s-paragraph>
-                      GroundingDINO→SAM2
-                      に渡す短い品目名です。Shopify商品名から自動正規化した初期値を、作成前に確認・編集してください。
-                    </s-paragraph>
                     <s-text-field
                       name="productTitlePrompt"
                       label="セグメンテーション用プロンプト"
@@ -600,6 +612,11 @@ export default function GenerationJobPage() {
                       {sizeChart.notes?.length ? (
                         <s-paragraph>
                           メモ: {sizeChart.notes.join(" / ")}
+                        </s-paragraph>
+                      ) : null}
+                      {descriptionEmpty ? (
+                        <s-paragraph>
+                          メモ: 商品説明が空です（不足フラグ・作成ブロックにはしません）。
                         </s-paragraph>
                       ) : null}
                     </s-box>

@@ -18,6 +18,7 @@ import {
   defaultSelectedImageId,
   resolveSelectedImage,
   selectedImageIdFromForm,
+  visibleMissingFlags,
   REVIEW_SELECTED_IMAGE_HELPER,
 } from ${JSON.stringify(resolve(root, "app/lib/product-review.ts"))};
 import { computeMissingFlags } from ${JSON.stringify(resolve(root, "app/services/product-collect.server.ts"))};
@@ -82,6 +83,24 @@ const flags = computeMissingFlags({
   modelMeta: emptyMeta,
 });
 assert(!flags.includes("model_meta"), "Admin path no longer flags model_meta");
+
+const emptyDescFlags = computeMissingFlags({
+  productFound: true,
+  images: images as any,
+  descriptionHtml: "",
+  sizeChart: chart as any,
+  modelMeta: emptyMeta,
+});
+assert(
+  !emptyDescFlags.includes("description"),
+  "empty description must not be a missing flag",
+);
+assert(
+  visibleMissingFlags(["images", "description", "model_meta", "size_chart"]).join(
+    ",",
+  ) === "images,size_chart",
+  "不足フラグ hides description/model_meta",
+);
 
 console.log("smoke:selected-image OK");
 `;
